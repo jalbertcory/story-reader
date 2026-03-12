@@ -47,6 +47,11 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    lint {
+        // NonNullableMutableLiveDataDetector crashes with Kotlin 2.x (IncompatibleClassChangeError)
+        disable += "NullSafeMutableLiveData"
+    }
 }
 
 dependencies {
