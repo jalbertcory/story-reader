@@ -1,0 +1,110 @@
+package com.storyreader.ui.reader
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.storyreader.StoryReaderApplication
+import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.repository.BookRepository
+import com.storyreader.data.repository.ReadingRepository
+import com.storyreader.reader.epub.EpubRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
+import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.shared.publication.Publication
+
+data class ReaderUiState(
+    val publication: Publication? = null,
+    val book: BookEntity? = null,
+    val isLoading: Boolean = true,
+    val error: String? = null,
+    val initialLocatorJson: String? = null
+)
+
+class ReaderViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val bookRepository: BookRepository =
+        (application as StoryReaderApplication).bookRepository
+    private val readingRepository: ReadingRepository = application.readingRepository
+    private val epubRepository: EpubRepository = application.epubRepository
+
+    private val _uiState = MutableStateFlow(ReaderUiState())
+    val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
+
+    private val _preferences = MutableStateFlow(EpubPreferences())
+    val preferences: StateFlow<EpubPreferences> = _preferences.asStateFlow()
+
+    private val _ttsPlaying = MutableStateFlow(false)
+    val ttsPlaying: StateFlow<Boolean> = _ttsPlaying.asStateFlow()
+
+    private var currentBookId: String? = null
+    private var currentSessionId: Long? = null
+    private var sessionStartMs: Long = 0L
+    private var pagesTurned: Int = 0
+
+    fun openBook(bookId: String) {
+        if (currentBookId == bookId) return
+        currentBookId = bookId
+
+        viewModelScope.launch {
+            _uiState.value = ReaderUiState(isLoading = true)
+
+            val savedPosition = readingRepository.observeLatestPosition(bookId).firstOrNull()
+            val uri = Uri.parse(bookId)
+
+            epubRepository.openPublication(uri)
+                .onSuccess { publication ->
+                    _uiState.value = ReaderUiState(
+                        publication = publication,
+                        isLoading = false,
+                        initialLocatorJson = savedPosition?.locatorJson
+                    )
+                    currentSessionId = readingRepository.startSession(bookId)
+                    sessionStartMs = System.currentTimeMillis()
+                    pagesTurned = 0
+                }
+                .onFailure { e ->
+                    _uiState.value = ReaderUiState(
+                        isLoading = false,
+                        error = e.message ?: "Failed to open book"
+                    )
+                }
+        }
+    }
+
+    fun onProgressionChanged(bookId: String, locatorJson: String, progression: Float) {
+        viewModelScope.launch {
+            readingRepository.savePosition(bookId, locatorJson)
+            bookRepository.updateProgression(bookId, progression)
+            pagesTurned++
+        }
+    }
+
+    fun updatePreferences(transform: (EpubPreferences) -> EpubPreferences) {
+        _preferences.value = transform(_preferences.value)
+    }
+
+    fun setTtsPlaying(playing: Boolean) {
+        _ttsPlaying.value = playing
+    }
+
+    fun finalizeSession() {
+        val sessionId = currentSessionId ?: return
+        val bookId = currentBookId ?: return
+        val duration = ((System.currentTimeMillis() - sessionStartMs) / 1000).toInt()
+        val captured = pagesTurned
+        viewModelScope.launch {
+            readingRepository.finalizeSession(sessionId, duration, captured)
+        }
+        currentSessionId = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        finalizeSession()
+    }
+}
