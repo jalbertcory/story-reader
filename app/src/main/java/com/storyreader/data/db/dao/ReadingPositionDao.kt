@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ReadingPositionDao {
-    @Query("SELECT * FROM reading_positions WHERE bookId = :bookId ORDER BY timestamp DESC LIMIT 1")
+    @Query("SELECT * FROM reading_positions WHERE bookId = :bookId ORDER BY timestamp DESC, id DESC LIMIT 1")
     fun getLatestPosition(bookId: String): Flow<ReadingPositionEntity?>
 
     @Insert

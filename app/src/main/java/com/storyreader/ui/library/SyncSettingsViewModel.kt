@@ -17,7 +17,7 @@ data class SyncSettingsUiState(
 
 class SyncSettingsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val credentialsManager = SyncCredentialsManager(application)
+    private val credentialsManager = SyncCredentialsManager.create(application)
 
     private val _uiState = MutableStateFlow(
         SyncSettingsUiState(
