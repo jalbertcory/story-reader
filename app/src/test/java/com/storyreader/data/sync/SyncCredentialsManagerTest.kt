@@ -11,6 +11,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
+/**
+ * Tests [SyncCredentialsManager] logic using a plain SharedPreferences backend
+ * (AndroidKeyStore is unavailable in the JVM test environment).
+ * The encryption layer is tested separately via [KeystoreEncryptedPrefsTest].
+ */
 @RunWith(RobolectricTestRunner::class)
 class SyncCredentialsManagerTest {
 
@@ -19,7 +24,8 @@ class SyncCredentialsManagerTest {
     @Before
     fun setUp() {
         val context: Context = ApplicationProvider.getApplicationContext()
-        manager = SyncCredentialsManager(context)
+        val prefs = context.getSharedPreferences("test_sync_credentials", Context.MODE_PRIVATE)
+        manager = SyncCredentialsManager(prefs)
         manager.clear()
     }
 
