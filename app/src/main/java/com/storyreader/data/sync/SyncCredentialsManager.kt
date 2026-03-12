@@ -2,8 +2,6 @@ package com.storyreader.data.sync
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
 
 class SyncCredentialsManager(private val prefs: SharedPreferences) {
 
@@ -32,15 +30,8 @@ class SyncCredentialsManager(private val prefs: SharedPreferences) {
         private const val KEY_APP_PASSWORD = "app_password"
 
         fun create(context: Context): SyncCredentialsManager {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            val prefs = EncryptedSharedPreferences.create(
-                "sync_credentials",
-                masterKeyAlias,
-                context,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-            return SyncCredentialsManager(prefs)
+            val backing = context.getSharedPreferences("sync_credentials", Context.MODE_PRIVATE)
+            return SyncCredentialsManager(KeystoreEncryptedPrefs(backing))
         }
     }
 }

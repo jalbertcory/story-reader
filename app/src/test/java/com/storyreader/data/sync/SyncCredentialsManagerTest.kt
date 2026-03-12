@@ -13,8 +13,8 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Tests [SyncCredentialsManager] logic using a plain SharedPreferences backend
- * (EncryptedSharedPreferences requires AndroidKeyStore which is unavailable on the JVM).
- * The encryption layer is a library concern; what we test here is correct key/value handling.
+ * (AndroidKeyStore is unavailable in the JVM test environment).
+ * The encryption layer is tested separately via [KeystoreEncryptedPrefsTest].
  */
 @RunWith(RobolectricTestRunner::class)
 class SyncCredentialsManagerTest {

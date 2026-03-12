@@ -94,9 +94,6 @@ dependencies {
     // WorkManager
     implementation(libs.workmanager)
 
-    // Security
-    implementation(libs.security.crypto)
-
     // Fragment
     implementation(libs.fragment.ktx)
 
