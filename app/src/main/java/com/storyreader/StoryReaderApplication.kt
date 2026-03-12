@@ -26,7 +26,7 @@ class StoryReaderApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val credentialsManager = SyncCredentialsManager(this)
+        val credentialsManager = SyncCredentialsManager.create(this)
         if (credentialsManager.hasCredentials) {
             SyncScheduler.schedulePeriodicSync(this)
         }

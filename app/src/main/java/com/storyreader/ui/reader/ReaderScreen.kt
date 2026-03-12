@@ -93,13 +93,13 @@ fun ReaderScreen(
                 }
                 uiState.error != null -> {
                     Text(
-                        text = uiState.error,
+                        text = uiState.error ?: "",
                         color = MaterialTheme.colorScheme.error
                     )
                 }
                 uiState.publication != null -> {
                     EpubReaderContent(
-                        publication = uiState.publication,
+                        publication = uiState.publication!!,
                         bookId = bookId,
                         viewModel = viewModel
                     )

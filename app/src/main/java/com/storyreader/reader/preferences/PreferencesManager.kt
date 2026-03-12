@@ -4,19 +4,21 @@ import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
 
-class PreferencesManager {
+/**
+ * Helper for constructing valid [EpubPreferences] mutations.
+ * Callers receive a new immutable copy; the navigator is updated via
+ * [EpubNavigatorFragment.submitPreferences].
+ */
+object PreferencesManager {
 
-    fun updateFontSize(current: EpubPreferences, delta: Double): EpubPreferences {
-        val currentSize = current.fontSize ?: 1.0
-        val newSize = (currentSize + delta).coerceIn(0.5, 3.0)
-        return current.copy(fontSize = newSize)
+    fun adjustFontSize(current: EpubPreferences, delta: Double): EpubPreferences {
+        val next = (current.fontSize ?: 1.0) + delta
+        return current.copy(fontSize = next.coerceIn(0.5, 3.0))
     }
 
-    fun updateTheme(current: EpubPreferences, theme: Theme?): EpubPreferences {
-        return current.copy(theme = theme)
-    }
+    fun withTheme(current: EpubPreferences, theme: Theme?): EpubPreferences =
+        current.copy(theme = theme)
 
-    fun updateFontFamily(current: EpubPreferences, fontFamily: FontFamily?): EpubPreferences {
-        return current.copy(fontFamily = fontFamily)
-    }
+    fun withFontFamily(current: EpubPreferences, fontFamily: FontFamily?): EpubPreferences =
+        current.copy(fontFamily = fontFamily)
 }

@@ -27,10 +27,10 @@ data class ReaderUiState(
 
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val bookRepository: BookRepository =
-        (application as StoryReaderApplication).bookRepository
-    private val readingRepository: ReadingRepository = application.readingRepository
-    private val epubRepository: EpubRepository = application.epubRepository
+    private val app = application as StoryReaderApplication
+    private val bookRepository: BookRepository = app.bookRepository
+    private val readingRepository: ReadingRepository = app.readingRepository
+    private val epubRepository: EpubRepository = app.epubRepository
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()

@@ -5,18 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 
-class SyncCredentialsManager(context: Context) {
-
-    private val prefs: SharedPreferences by lazy {
-        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-        EncryptedSharedPreferences.create(
-            "sync_credentials",
-            masterKeyAlias,
-            context,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    }
+class SyncCredentialsManager(private val prefs: SharedPreferences) {
 
     var serverUrl: String?
         get() = prefs.getString(KEY_SERVER_URL, null)
@@ -41,5 +30,17 @@ class SyncCredentialsManager(context: Context) {
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_APP_PASSWORD = "app_password"
+
+        fun create(context: Context): SyncCredentialsManager {
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            val prefs = EncryptedSharedPreferences.create(
+                "sync_credentials",
+                masterKeyAlias,
+                context,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            return SyncCredentialsManager(prefs)
+        }
     }
 }

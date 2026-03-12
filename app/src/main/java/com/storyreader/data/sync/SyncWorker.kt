@@ -12,7 +12,7 @@ class SyncWorker(
 
     override suspend fun doWork(): Result {
         val app = applicationContext as StoryReaderApplication
-        val credentialsManager = SyncCredentialsManager(applicationContext)
+        val credentialsManager = SyncCredentialsManager.create(applicationContext)
 
         if (!credentialsManager.hasCredentials) {
             return Result.failure()
