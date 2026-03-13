@@ -19,6 +19,7 @@ import com.storyreader.reader.tts.TtsMediaService
 import com.storyreader.reader.tts.TtsVoiceOption
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,6 +76,7 @@ private const val KEY_FONT_FAMILY = "font_family"
 private const val KEY_IS_NIGHT = "is_night_theme"
 private const val KEY_TTS_PREFS = "tts_prefs_json"
 private const val KEY_TTS_ENGINE = "tts_engine"
+private const val DEFAULT_TTS_SPEED = 1.3
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -97,7 +99,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var selectedTtsEnginePackageName: String? = prefStore.getString(KEY_TTS_ENGINE, null)
     private val _ttsSettings = MutableStateFlow(
         TtsSettingsUiState(
-            speed = (_ttsPreferences.value.speed ?: 1.0).toFloat(),
+            speed = (_ttsPreferences.value.speed ?: DEFAULT_TTS_SPEED).toFloat(),
             pitch = (_ttsPreferences.value.pitch ?: 1.0).toFloat(),
             enginePackageName = selectedTtsEnginePackageName,
             selectedVoiceId = selectedVoiceFor(currentTtsLanguage())
@@ -132,9 +134,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun loadSavedTtsPreferences(): AndroidTtsPreferences {
-        val serialized = prefStore.getString(KEY_TTS_PREFS, null) ?: return AndroidTtsPreferences()
+        val serialized = prefStore.getString(KEY_TTS_PREFS, null)
+            ?: return AndroidTtsPreferences(speed = DEFAULT_TTS_SPEED)
         return runCatching { ttsPreferencesSerializer.deserialize(serialized) }
-            .getOrDefault(AndroidTtsPreferences())
+            .getOrDefault(AndroidTtsPreferences(speed = DEFAULT_TTS_SPEED))
     }
 
     private fun savePreferences(prefs: EpubPreferences) {
@@ -168,6 +171,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var ttsNavigator: AndroidTtsNavigator? = null
     private var ttsServiceBinder: TtsMediaService.LocalBinder? = null
     private var ttsJob: Job? = null
+    private var ttsResumeLocator: Locator? = null
 
     private val _currentLocator = MutableStateFlow<Locator?>(null)
     val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
@@ -236,6 +240,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onProgressionChanged(bookId: String, locator: Locator) {
         _currentLocator.value = locator
+        if (_ttsState.value == TtsPlaybackState.STOPPED) {
+            ttsResumeLocator = null
+        }
         pageTurnTimestamps.add(System.currentTimeMillis())
         savePositionJob?.cancel()
         savePositionJob = viewModelScope.launch {
@@ -354,7 +361,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private fun updateTtsPreferences(preferences: AndroidTtsPreferences) {
         _ttsPreferences.value = preferences
         _ttsSettings.value = _ttsSettings.value.copy(
-            speed = (preferences.speed ?: 1.0).toFloat(),
+            speed = (preferences.speed ?: DEFAULT_TTS_SPEED).toFloat(),
             pitch = (preferences.pitch ?: 1.0).toFloat(),
             selectedVoiceId = selectedVoiceFor(currentTtsLanguage())
         )
@@ -403,7 +410,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun startTts() {
         if (_ttsState.value != TtsPlaybackState.STOPPED) return
         ttsJob = viewModelScope.launch {
-            val startLocator = (navigator as? VisualNavigator)?.firstVisibleElementLocator()
+            val startLocator = ttsResumeLocator
+                ?: (navigator as? VisualNavigator)?.firstVisibleElementLocator()
                 ?: _currentLocator.value
             val nav = ttsManager.start(startLocator, _ttsPreferences.value) ?: return@launch
             ttsNavigator = nav
@@ -415,12 +423,21 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 ttsHighlightSynchronizer.startSync(nav, epubNavigator)
             }
 
+            launch {
+                nav.location.collect { location ->
+                    ttsResumeLocator = location.tokenLocator ?: location.utteranceLocator
+                }
+            }
+
             nav.play()
             _ttsState.value = TtsPlaybackState.PLAYING
 
             nav.playback.collect { playback ->
                 when (playback.state) {
-                    is TtsNavigator.State.Ended -> stopTts()
+                    is TtsNavigator.State.Ended -> {
+                        ttsResumeLocator = null
+                        stopTts()
+                    }
                     is TtsNavigator.State.Failure -> stopTts()
                     else -> {
                         _ttsState.value = if (playback.playWhenReady) {
@@ -435,10 +452,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun ttsPlayPause() {
-        val nav = ttsNavigator ?: return
         when (_ttsState.value) {
-            TtsPlaybackState.PLAYING -> nav.pause()
-            TtsPlaybackState.PAUSED -> nav.play()
+            TtsPlaybackState.PLAYING -> ttsNavigator?.pause()
+            TtsPlaybackState.PAUSED -> ttsNavigator?.play()
             TtsPlaybackState.STOPPED -> startTts()
         }
     }
@@ -464,6 +480,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val nav = navigator as? OverflowableNavigator ?: return
         viewModelScope.launch {
             stopTts()
+            ttsResumeLocator = null
             nav.goBackward()
             delay(200)
             startTts()
@@ -474,6 +491,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val nav = navigator as? OverflowableNavigator ?: return
         viewModelScope.launch {
             stopTts()
+            ttsResumeLocator = null
             nav.goForward()
             delay(200)
             startTts()
