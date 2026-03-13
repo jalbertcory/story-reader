@@ -28,4 +28,10 @@ interface BookDao {
 
     @Query("UPDATE books SET totalProgression = :progression WHERE bookId = :bookId")
     suspend fun updateProgression(bookId: String, progression: Float)
+
+    @Query("UPDATE books SET wordCount = :count WHERE bookId = :bookId")
+    suspend fun updateWordCount(bookId: String, count: Int)
+
+    @Query("SELECT wordCount FROM books WHERE bookId = :bookId LIMIT 1")
+    suspend fun getWordCountById(bookId: String): Int?
 }

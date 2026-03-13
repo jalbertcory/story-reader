@@ -19,16 +19,17 @@ data class BookStatItem(
     val firstReadMs: Long,
     val lastReadMs: Long,
     val totalReadingSeconds: Int,
+    val totalWordsRead: Int,
     val sessionCount: Int
 )
 
 data class GlobalStats(
     val allTimeTotalSeconds: Long,
-    val allTimeBooksStarted: Int,
+    val allTimeTotalWords: Long,
     val ytdTotalSeconds: Long,
-    val ytdBooksStarted: Int,
+    val ytdTotalWords: Long,
     val goalHoursPerYear: Int,
-    val goalBooksPerYear: Int
+    val goalWordsPerYear: Int
 )
 
 data class StatsUiState(
@@ -39,9 +40,9 @@ data class StatsUiState(
 
 private const val PREFS_NAME = "reading_goals"
 private const val KEY_GOAL_HOURS = "goal_hours_per_year"
-private const val KEY_GOAL_BOOKS = "goal_books_per_year"
+private const val KEY_GOAL_WORDS = "goal_words_per_year"
 private const val DEFAULT_GOAL_HOURS = 50
-private const val DEFAULT_GOAL_BOOKS = 12
+private const val DEFAULT_GOAL_WORDS = 500_000
 
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -66,16 +67,16 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 bookRepository.observeAll(),
                 sessionDao.getBookSessionStats(),
                 sessionDao.getTotalReadingSeconds(),
-                sessionDao.getTotalBooksStarted(),
+                sessionDao.getTotalWordsRead(),
                 sessionDao.getReadingSecondsSince(yearStartMs),
-                sessionDao.getBooksStartedSince(yearStartMs)
+                sessionDao.getWordsReadSince(yearStartMs)
             ) { values ->
                 val books = values[0] as List<BookEntity>
                 val statsPerBook = values[1] as List<BookSessionStats>
                 val totalSecs = values[2] as Long?
-                val totalBooks = values[3] as Int
+                val totalWords = values[3] as Long?
                 val ytdSecs = values[4] as Long?
-                val ytdBooks = values[5] as Int
+                val ytdWords = values[5] as Long?
 
                 val statsMap = statsPerBook.associateBy { it.bookId }
                 val bookItems = books
@@ -86,6 +87,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                             firstReadMs = s.firstSessionStart,
                             lastReadMs = s.lastSessionStart,
                             totalReadingSeconds = s.totalDurationSeconds,
+                            totalWordsRead = s.totalWordsRead,
                             sessionCount = s.sessionCount
                         )
                     }
@@ -93,11 +95,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
                 val global = GlobalStats(
                     allTimeTotalSeconds = totalSecs ?: 0L,
-                    allTimeBooksStarted = totalBooks,
+                    allTimeTotalWords = totalWords ?: 0L,
                     ytdTotalSeconds = ytdSecs ?: 0L,
-                    ytdBooksStarted = ytdBooks,
+                    ytdTotalWords = ytdWords ?: 0L,
                     goalHoursPerYear = prefs.getInt(KEY_GOAL_HOURS, DEFAULT_GOAL_HOURS),
-                    goalBooksPerYear = prefs.getInt(KEY_GOAL_BOOKS, DEFAULT_GOAL_BOOKS)
+                    goalWordsPerYear = prefs.getInt(KEY_GOAL_WORDS, DEFAULT_GOAL_WORDS)
                 )
 
                 StatsUiState(bookStats = bookItems, globalStats = global, isLoading = false)
@@ -114,10 +116,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun setGoalBooks(books: Int) {
-        prefs.edit().putInt(KEY_GOAL_BOOKS, books).apply()
+    fun setGoalWords(words: Int) {
+        prefs.edit().putInt(KEY_GOAL_WORDS, words).apply()
         _uiState.value = _uiState.value.copy(
-            globalStats = _uiState.value.globalStats?.copy(goalBooksPerYear = books)
+            globalStats = _uiState.value.globalStats?.copy(goalWordsPerYear = words)
         )
     }
 

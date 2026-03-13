@@ -97,6 +97,10 @@ dependencies {
     // Fragment
     implementation(libs.fragment.ktx)
 
+    // Media3 (for TTS MediaSession)
+    implementation(libs.media3.session)
+    implementation(libs.media3.common)
+
     // Image loading
     implementation(libs.coil.compose)
 

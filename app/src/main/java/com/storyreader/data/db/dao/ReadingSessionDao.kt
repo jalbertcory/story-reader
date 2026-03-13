@@ -14,6 +14,7 @@ data class BookSessionStats(
     val firstSessionStart: Long,
     val lastSessionStart: Long,
     val totalDurationSeconds: Int,
+    val totalWordsRead: Int,
     val sessionCount: Int
 )
 
@@ -36,6 +37,7 @@ interface ReadingSessionDao {
                MIN(startTime) as firstSessionStart,
                MAX(startTime) as lastSessionStart,
                SUM(durationSeconds) as totalDurationSeconds,
+               SUM(wordsRead) as totalWordsRead,
                COUNT(*) as sessionCount
         FROM reading_sessions
         GROUP BY bookId
@@ -47,6 +49,12 @@ interface ReadingSessionDao {
 
     @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE startTime >= :fromMs")
     fun getReadingSecondsSince(fromMs: Long): Flow<Long?>
+
+    @Query("SELECT SUM(wordsRead) FROM reading_sessions")
+    fun getTotalWordsRead(): Flow<Long?>
+
+    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE startTime >= :fromMs")
+    fun getWordsReadSince(fromMs: Long): Flow<Long?>
 
     @Query("SELECT COUNT(DISTINCT bookId) FROM reading_sessions")
     fun getTotalBooksStarted(): Flow<Int>

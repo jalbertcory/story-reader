@@ -10,7 +10,14 @@ interface ReadingRepository {
     fun observeLatestPosition(bookId: String): Flow<ReadingPositionEntity?>
     suspend fun savePosition(bookId: String, locatorJson: String)
     suspend fun startSession(bookId: String): Long
-    suspend fun finalizeSession(sessionId: Long, pageTurnTimestampsMs: List<Long>, sessionStartMs: Long)
+    suspend fun finalizeSession(
+        sessionId: Long,
+        pageTurnTimestampsMs: List<Long>,
+        sessionStartMs: Long,
+        progressionStart: Float = 0f,
+        progressionEnd: Float = 0f,
+        bookWordCount: Int = 0
+    )
     fun observeSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>>
 }
 
@@ -34,18 +41,26 @@ class ReadingRepositoryImpl(
     override suspend fun finalizeSession(
         sessionId: Long,
         pageTurnTimestampsMs: List<Long>,
-        sessionStartMs: Long
+        sessionStartMs: Long,
+        progressionStart: Float,
+        progressionEnd: Float,
+        bookWordCount: Int
     ) {
         val session = sessionDao.getById(sessionId) ?: return
         val nowMs = System.currentTimeMillis()
         val rawDuration = ((nowMs - sessionStartMs) / 1000).toInt()
         val adjustedDuration = calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
         val pagesTurned = pageTurnTimestampsMs.size
+        val wordsRead = if (bookWordCount > 0)
+            ((progressionEnd - progressionStart).coerceAtLeast(0f) * bookWordCount).toInt()
+        else
+            (adjustedDuration / 60.0 * 200).toInt()  // fallback estimate for old books
         sessionDao.updateSession(
             session.copy(
                 durationSeconds = adjustedDuration,
                 rawDurationSeconds = rawDuration,
-                pagesTurned = pagesTurned
+                pagesTurned = pagesTurned,
+                wordsRead = wordsRead
             )
         )
     }
