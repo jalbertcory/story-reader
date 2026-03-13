@@ -92,7 +92,7 @@ private data class StatusBarStyle(val bg: Color, val text: Color)
 private data class ReaderChromeInsets(val horizontal: Dp, val bottom: Dp)
 private data class ChapterStatus(val label: String, val title: String, val progress: Float?)
 
-private val ReaderBottomBarReservedHeight = 18.dp
+private val ReaderBottomBarReservedHeight = 12.dp
 
 @OptIn(ExperimentalReadiumApi::class)
 private fun statusBarStyleFor(preferences: EpubPreferences?): StatusBarStyle = when {
@@ -356,26 +356,53 @@ private fun TtsControlsBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(style.bg)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 1.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onPrevious) {
-            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous page", tint = style.text)
+        IconButton(
+            onClick = onPrevious,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.SkipPrevious,
+                contentDescription = "Previous page",
+                tint = style.text,
+                modifier = Modifier.size(22.dp)
+            )
         }
-        IconButton(onClick = onPlayPause) {
+        IconButton(
+            onClick = onPlayPause,
+            modifier = Modifier.size(42.dp)
+        ) {
             Icon(
                 if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (isPlaying) "Pause" else "Play",
                 tint = style.text,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        IconButton(onClick = onStop) {
-            Icon(Icons.Default.Stop, contentDescription = "Stop TTS", tint = style.text, modifier = Modifier.size(28.dp))
+        IconButton(
+            onClick = onStop,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.Stop,
+                contentDescription = "Stop TTS",
+                tint = style.text,
+                modifier = Modifier.size(21.dp)
+            )
         }
-        IconButton(onClick = onNext) {
-            Icon(Icons.Default.SkipNext, contentDescription = "Next page", tint = style.text)
+        IconButton(
+            onClick = onNext,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.SkipNext,
+                contentDescription = "Next page",
+                tint = style.text,
+                modifier = Modifier.size(22.dp)
+            )
         }
     }
 }
