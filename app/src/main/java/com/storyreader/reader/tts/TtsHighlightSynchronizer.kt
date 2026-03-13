@@ -2,15 +2,15 @@ package com.storyreader.reader.tts
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import org.readium.navigator.media.tts.AndroidTtsNavigator
 import org.readium.r2.navigator.DecorableNavigator
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 
+@OptIn(ExperimentalReadiumApi::class)
 class TtsHighlightSynchronizer(
     private val scope: CoroutineScope
 ) {
@@ -18,25 +18,43 @@ class TtsHighlightSynchronizer(
     private var syncJob: Job? = null
 
     fun startSync(
-        locationFlow: StateFlow<Locator?>,
+        ttsNavigator: AndroidTtsNavigator,
         epubNavigator: EpubNavigatorFragment
     ) {
         stopSync()
         syncJob = scope.launch {
-            locationFlow
-                .filterNotNull()
-                .distinctUntilChanged()
-                .collect { locator ->
+            var lastFollowLocator: Locator? = null
+            var lastTokenLocator: Locator? = null
+            ttsNavigator.location
+                .collect { location ->
+                    val highlightLocator = when {
+                        location.tokenLocator != null -> {
+                            lastTokenLocator = location.tokenLocator
+                            location.tokenLocator
+                        }
+                        // Avoid flashing the whole sentence between token callbacks.
+                        location.range == null && lastTokenLocator != null -> lastTokenLocator
+                        else -> {
+                            lastTokenLocator = null
+                            location.utteranceLocator
+                        }
+                    } ?: location.utteranceLocator
                     val decoration = Decoration(
                         id = "tts-utterance",
-                        locator = locator,
+                        locator = highlightLocator,
                         style = Decoration.Style.Highlight(tint = android.graphics.Color.YELLOW)
                     )
                     (epubNavigator as DecorableNavigator).applyDecorations(
                         listOf(decoration),
                         group = "tts"
                     )
-                    epubNavigator.go(locator)
+
+                    // Follow sentence/utterance progression, not per-word token updates.
+                    val followLocator = location.utteranceLocator
+                    if (followLocator != lastFollowLocator) {
+                        lastFollowLocator = followLocator
+                        epubNavigator.go(followLocator)
+                    }
                 }
         }
     }
