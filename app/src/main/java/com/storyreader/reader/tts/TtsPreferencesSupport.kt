@@ -5,6 +5,7 @@ import android.speech.tts.TextToSpeech
 import androidx.annotation.VisibleForTesting
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.util.UnstableApi
 import java.lang.reflect.Constructor
 import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
@@ -205,6 +206,7 @@ class StoryReaderAndroidTtsEngineProvider(
             pitch = playbackParameters.pitch.toDouble()
         )
 
+    @UnstableApi
     override fun mapEngineError(error: AndroidTtsEngine.Error): PlaybackException {
         val errorCode = when (error) {
             AndroidTtsEngine.Error.Unknown -> PlaybackException.ERROR_CODE_UNSPECIFIED
