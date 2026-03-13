@@ -10,7 +10,10 @@ import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.reader.epub.EpubRepository
+import com.storyreader.reader.tts.TtsManager
+import com.storyreader.reader.tts.TtsMediaService
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +21,8 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import org.readium.navigator.media.tts.AndroidTtsNavigator
+import org.readium.navigator.media.tts.TtsNavigator
 import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -30,6 +35,8 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+
+enum class TtsPlaybackState { STOPPED, PLAYING, PAUSED }
 
 data class ReaderUiState(
     val publication: Publication? = null,
@@ -44,6 +51,7 @@ private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_THEME = "theme"
 private const val KEY_FONT_FAMILY = "font_family"
 
+@OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as StoryReaderApplication
@@ -56,6 +64,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     private val _preferences = MutableStateFlow(loadSavedPreferences())
+
     val preferences: StateFlow<EpubPreferences> = _preferences.asStateFlow()
 
     private fun loadSavedPreferences(): EpubPreferences {
@@ -85,8 +94,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }.apply()
     }
 
-    private val _ttsPlaying = MutableStateFlow(false)
-    val ttsPlaying: StateFlow<Boolean> = _ttsPlaying.asStateFlow()
+    // TTS state
+    private val _ttsState = MutableStateFlow(TtsPlaybackState.STOPPED)
+    val ttsState: StateFlow<TtsPlaybackState> = _ttsState.asStateFlow()
+
+    private val ttsManager = TtsManager(application)
+    private var ttsNavigator: AndroidTtsNavigator? = null
+    private var ttsServiceBinder: TtsMediaService.LocalBinder? = null
+    private var ttsJob: Job? = null
 
     private val _currentLocator = MutableStateFlow<Locator?>(null)
     val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
@@ -101,6 +116,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var navigator: EpubNavigatorFragment? = null
     private var locatorJob: Job? = null
     private var preferencesJob: Job? = null
+    private var savePositionJob: Job? = null
     private var currentBookId: String? = null
     private var currentSessionId: Long? = null
     private var sessionStartMs: Long = 0L
@@ -126,6 +142,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     currentSessionId = readingRepository.startSession(bookId)
                     sessionStartMs = System.currentTimeMillis()
                     pageTurnTimestamps.clear()
+                    ttsManager.initialize(publication)
                 }
                 .onFailure { e ->
                     _uiState.value = ReaderUiState(
@@ -139,7 +156,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun onProgressionChanged(bookId: String, locator: Locator) {
         _currentLocator.value = locator
         pageTurnTimestamps.add(System.currentTimeMillis())
-        viewModelScope.launch {
+        // Debounce saves by 300 ms to absorb rapid updates during webview reflow
+        savePositionJob?.cancel()
+        savePositionJob = viewModelScope.launch {
+            delay(300)
             readingRepository.savePosition(bookId, locator.toJSON().toString())
             bookRepository.updateProgression(
                 bookId,
@@ -148,7 +168,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    @OptIn(ExperimentalReadiumApi::class)
     fun onNavigatorReady(nav: EpubNavigatorFragment) {
         if (navigator === nav) return
         navigator = nav
@@ -164,12 +183,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             .onEach { prefs -> nav.submitPreferences(prefs) }
             .launchIn(viewModelScope)
 
-        // Tap-to-turn pages: left 30% = back, right 30% = forward
         val overflowableNav = nav as? OverflowableNavigator
         if (overflowableNav != null) {
             nav.addInputListener(DirectionalNavigationAdapter(overflowableNav))
         }
-        // Center tap: toggle app/system bars
         nav.addInputListener(object : InputListener {
             override fun onTap(event: TapEvent): Boolean {
                 val viewWidth = nav.publicationView.width.toFloat()
@@ -198,9 +215,59 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         savePreferences(updated)
     }
 
-    fun setTtsPlaying(playing: Boolean) {
-        _ttsPlaying.value = playing
+    // TTS controls
+
+    fun startTts() {
+        if (_ttsState.value != TtsPlaybackState.STOPPED) return
+        ttsJob = viewModelScope.launch {
+            val startLocator = _currentLocator.value
+            val nav = ttsManager.start(startLocator) ?: return@launch
+            ttsNavigator = nav
+
+            val binder = TtsMediaService.bind(getApplication())
+            ttsServiceBinder = binder
+            binder?.openSession(nav)
+
+            nav.play()
+            _ttsState.value = TtsPlaybackState.PLAYING
+
+            nav.playback.collect { playback ->
+                when (playback.state) {
+                    is TtsNavigator.State.Ended -> stopTts()
+                    is TtsNavigator.State.Failure -> stopTts()
+                    else -> {
+                        _ttsState.value = if (playback.playWhenReady)
+                            TtsPlaybackState.PLAYING
+                        else
+                            TtsPlaybackState.PAUSED
+                    }
+                }
+            }
+        }
     }
+
+    fun ttsPlayPause() {
+        val nav = ttsNavigator ?: return
+        when (_ttsState.value) {
+            TtsPlaybackState.PLAYING -> nav.pause()
+            TtsPlaybackState.PAUSED -> nav.play()
+            TtsPlaybackState.STOPPED -> startTts()
+        }
+    }
+
+    fun stopTts() {
+        ttsJob?.cancel()
+        ttsJob = null
+        ttsNavigator?.close()
+        ttsNavigator = null
+        ttsManager.stop()
+        ttsServiceBinder?.closeSession()
+        ttsServiceBinder = null
+        _ttsState.value = TtsPlaybackState.STOPPED
+    }
+
+    fun ttsSkipPrevious() = ttsNavigator?.skipToPreviousUtterance()
+    fun ttsSkipNext() = ttsNavigator?.skipToNextUtterance()
 
     fun finalizeSession() {
         val sessionId = currentSessionId ?: return
@@ -214,6 +281,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         super.onCleared()
+        stopTts()
         finalizeSession()
     }
 }

@@ -85,13 +85,12 @@ fun StatsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Global stats card
             uiState.globalStats?.let { global ->
                 item {
                     GlobalStatsCard(
                         global = global,
                         onGoalHoursChange = viewModel::setGoalHours,
-                        onGoalBooksChange = viewModel::setGoalBooks
+                        onGoalWordsChange = viewModel::setGoalWords
                     )
                 }
             }
@@ -125,7 +124,7 @@ fun StatsScreen(
 private fun GlobalStatsCard(
     global: GlobalStats,
     onGoalHoursChange: (Int) -> Unit,
-    onGoalBooksChange: (Int) -> Unit
+    onGoalWordsChange: (Int) -> Unit
 ) {
     var showGoalDialog by remember { mutableStateOf(false) }
 
@@ -154,7 +153,6 @@ private fun GlobalStatsCard(
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
             )
 
-            // Hours goal
             val ytdHours = global.ytdTotalSeconds / 3600f
             val hoursProgress = (ytdHours / global.goalHoursPerYear).coerceIn(0f, 1f)
             GoalProgressRow(
@@ -164,13 +162,13 @@ private fun GlobalStatsCard(
                 progress = hoursProgress
             )
 
-            // Books goal
-            val booksProgress = (global.ytdBooksStarted.toFloat() / global.goalBooksPerYear).coerceIn(0f, 1f)
+            val ytdWordsK = global.ytdTotalWords / 1000f
+            val wordsProgress = (global.ytdTotalWords.toFloat() / global.goalWordsPerYear).coerceIn(0f, 1f)
             GoalProgressRow(
-                label = "Books Started",
-                current = "${global.ytdBooksStarted}",
-                goal = "${global.goalBooksPerYear}",
-                progress = booksProgress
+                label = "Words Read (est.)",
+                current = if (global.ytdTotalWords >= 1000) "%.1fK".format(ytdWordsK) else "${global.ytdTotalWords}",
+                goal = formatWords(global.goalWordsPerYear.toLong()),
+                progress = wordsProgress
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -186,8 +184,8 @@ private fun GlobalStatsCard(
                     label = "Hours Read"
                 )
                 StatChip(
-                    value = "${global.allTimeBooksStarted}",
-                    label = "Books"
+                    value = formatWords(global.allTimeTotalWords),
+                    label = "Words Read (est.)"
                 )
             }
         }
@@ -196,10 +194,10 @@ private fun GlobalStatsCard(
     if (showGoalDialog) {
         GoalEditDialog(
             currentHours = global.goalHoursPerYear,
-            currentBooks = global.goalBooksPerYear,
-            onConfirm = { hours, books ->
+            currentWords = global.goalWordsPerYear,
+            onConfirm = { hours, words ->
                 onGoalHoursChange(hours)
-                onGoalBooksChange(books)
+                onGoalWordsChange(words)
                 showGoalDialog = false
             },
             onDismiss = { showGoalDialog = false }
@@ -235,18 +233,22 @@ private fun GoalProgressRow(label: String, current: String, goal: String, progre
 private fun StatChip(value: String, label: String) {
     Column {
         Text(value, style = MaterialTheme.typography.titleLarge)
-        Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+        Text(
+            label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+        )
     }
 }
 
 @Composable
 private fun BookStatCard(item: BookStatItem) {
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+    val wpm = if (item.totalReadingSeconds > 0)
+        (item.totalWordsRead.toFloat() / (item.totalReadingSeconds / 60f)).toInt()
+    else 0
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.padding(12.dp)) {
-            // Cover
             if (item.book.coverUri != null) {
                 AsyncImage(
                     model = File(item.book.coverUri),
@@ -288,7 +290,8 @@ private fun BookStatCard(item: BookStatItem) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     LabelValue("Time read", formatHours(item.totalReadingSeconds.toLong()))
-                    LabelValue("Sessions", "${item.sessionCount}")
+                    LabelValue("Words (est.)", formatWords(item.totalWordsRead.toLong()))
+                    if (wpm > 0) LabelValue("WPM", "$wpm")
                 }
                 if (item.book.totalProgression > 0f) {
                     Row(
@@ -327,12 +330,12 @@ private fun LabelValue(label: String, value: String) {
 @Composable
 private fun GoalEditDialog(
     currentHours: Int,
-    currentBooks: Int,
+    currentWords: Int,
     onConfirm: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     var hoursText by remember { mutableStateOf(currentHours.toString()) }
-    var booksText by remember { mutableStateOf(currentBooks.toString()) }
+    var wordsText by remember { mutableStateOf(currentWords.toString()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -348,9 +351,9 @@ private fun GoalEditDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value = booksText,
-                    onValueChange = { booksText = it.filter { c -> c.isDigit() } },
-                    label = { Text("Target books per year") },
+                    value = wordsText,
+                    onValueChange = { wordsText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Target words per year") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -360,8 +363,8 @@ private fun GoalEditDialog(
         confirmButton = {
             TextButton(onClick = {
                 val hours = hoursText.toIntOrNull()?.coerceIn(1, 10000) ?: currentHours
-                val books = booksText.toIntOrNull()?.coerceIn(1, 1000) ?: currentBooks
-                onConfirm(hours, books)
+                val words = wordsText.toIntOrNull()?.coerceIn(1000, 10_000_000) ?: currentWords
+                onConfirm(hours, words)
             }) { Text("Save") }
         },
         dismissButton = {
@@ -374,4 +377,12 @@ private fun formatHours(totalSeconds: Long): String {
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+}
+
+private fun formatWords(words: Long): String {
+    return when {
+        words >= 1_000_000 -> "%.1fM".format(words / 1_000_000f)
+        words >= 1_000 -> "%.1fK".format(words / 1_000f)
+        else -> "$words"
+    }
 }

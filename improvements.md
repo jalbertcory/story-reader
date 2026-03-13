@@ -6,73 +6,92 @@ Items are ordered roughly by priority. Mark completed items with `[x]`.
 
 ## Bugs
 
-- [x] **1. Duplicate Nextcloud import button**
-  The library screen shows both a top-bar cloud icon _and_ a floating action button that both trigger the same Nextcloud browser. Remove the redundant FAB cloud button; keep only the top-bar icon.
+- [x] **6. TTS does nothing beyond toggling a play/stop icon**
+  Properly integrated `TtsManager` into `ReaderViewModel`: initialize on navigator ready, call
+  `start(currentLocator)` / `stop()` on toggle, wired TTS controls in `ReaderScreen`.
 
-- [x] **2. No way to exit Nextcloud browser directly**
-  When browsing sub-folders the back button only navigates up one folder at a time. Add a dedicated **×** (Close) icon button in the top bar that always exits straight back to the library.
+- [x] **23. Fullscreen bottom system bar still visible**
+  `ReaderStatusBar` was rendered unconditionally. Wrapped it in `AnimatedVisibility(visible = showBars)`
+  with slide-up/down animation. Also fixed bottom padding to be 0 when bars are hidden.
 
-- [x] **3. Bottom-bar chapter title always blank**
-  `locator?.title` is frequently null in Readium; the field is not reliably populated. Fix by resolving the chapter title from the publication's table of contents by matching the current locator's resource href against TOC links.
-
-- [x] **4. Bottom-bar progress has no decimal**
-  `"${(it * 100).toInt()}%"` truncates to whole numbers. Change to one decimal place, e.g. `"%.1f".format(it * 100) + "%"`, so long books show meaningful precision.
-
-- [x] **5. Reading settings (font size / theme / font family) have no effect**
-  `updatePreferences` updates the `_preferences` StateFlow but `submitPreferences()` is never called on the `EpubNavigatorFragment`. Wire up a preferences observer in `onNavigatorReady` that calls `nav.submitPreferences(prefs)` whenever preferences change.
-
-- [ ] **6. TTS does nothing beyond toggling a play/stop icon**
-  `setTtsPlaying()` only flips a boolean; `TtsManager` is never instantiated or called. Properly integrate `TtsManager` into `ReaderViewModel`: initialize on navigator ready, call `start(currentLocator)` / `stop()` on toggle, and wire highlight synchronization via `TtsHighlightSynchronizer`.
+- [x] **24. Location jumps when toggling fullscreen**
+  WebView resize during show/hide bars causes rapid locator updates. Fixed by debouncing position
+  saves with a 300 ms delay so the final stable position after reflow is used.
 
 ---
 
 ## UX / Navigation
 
-- [x] **7. Page turning by tapping (in addition to swiping)**
-  Implemented via `DirectionalNavigationAdapter` registered on the `EpubNavigatorFragment` in `onNavigatorReady`. Left 30% of screen goes back, right 30% goes forward.
-  Add tap-zone navigation: tapping the left ~30 % of the reading area goes to the previous page; tapping the right ~30 % goes to the next page. Use `EpubNavigatorFragment`'s `addInputListener` with a `DirectionalNavigationAdapter` or a manual `InputListener` that calls `goBackward()` / `goForward()`.
+---
 
-- [x] **8. Fullscreen / immersive reading mode**
-  Tapping the **center** of the reading area should toggle the top app bar (and optionally the system status bar) to give a distraction-free reading experience. Show/hide the `TopAppBar` composable via a remembered boolean state; also toggle `WindowInsetsController` hide/show for a truly immersive feel.
+## Reader Settings
+
+- [x] **18. Eyestrain "Night" theme**
+  Added a fourth "Night" theme: pure black background + orange (#FF7722) text, with
+  `publisherStyles = false` so the colors actually apply. Applied via custom `backgroundColor`
+  and `textColor` fields in `EpubPreferences`.
+
+- [x] **19. Theme buttons preview their own colors**
+  Replaced plain `TextButton` theme selectors with styled `Surface` cards showing the actual
+  background and text color of each theme. Active theme is highlighted with a colored border.
+
+- [x] **20. Font buttons rendered in their own typeface**
+  Each font option button renders its label in the corresponding Compose `FontFamily` so users
+  can see the typeface before selecting it.
+
+- [x] **21. Font size slider: smaller range and finer steps**
+  Changed range from 0.5×–3.0× to 0.5×–2.0× with 29 steps (0.05× increments). Added a Reset
+  button to return to 100%.
+
+- [x] **22. App chrome matches reading theme**
+  The reader `Scaffold`, settings sheet, and controls all switch to a `darkColorScheme()` when
+  the Dark or Night reading theme is active, so the UI chrome blends with the book content.
 
 ---
 
 ## Library
 
-- [x] **9. Show book covers in the library list**
-  `BookEntity.coverUri` exists but is never populated. During import, extract the cover bitmap from the `Publication` (`publication.cover()`), resize it, save it to app-internal storage, and store the path in `coverUri`. Display the cover as a small thumbnail on the left side of each book card.
+---
 
-- [x] **10. Show "last read" date on book cards**
-  Query the most recent `ReadingSessionEntity.startTime` for each book and display it on the book card as e.g. "Last read Mar 10" or "Never read".
+## TTS
+
+- [x] **25. TTS with MediaSession (notification + watch controls)**
+  Created `TtsMediaService` (`MediaSessionService`) to host the `MediaSession`, enabling system
+  media notification and watch/headphone integration. `ReaderViewModel` binds to the service
+  when TTS starts and unbinds/stops when TTS stops.
+
+- [x] **26. TTS in-screen media controls**
+  When TTS is active a control bar appears above the status bar with: Skip Previous, Play/Pause,
+  Stop, and Skip Next buttons. The play button in the top bar now opens TTS (not just toggles an
+  icon). Controls disappear when TTS is stopped.
+
+- [ ] **15. TTS enhancements (after core TTS works)**
+  Once TTS is confirmed working, add:
+  - Voice selection from available system voices
+  - Speed adjustment (0.5×–2.0×)
+  - Visual word-level highlight following the spoken sentence (already scaffolded in `TtsHighlightSynchronizer`)
 
 ---
 
 ## Stats & Tracking
 
-- [x] **11. Stats screen – per-book history**
-  New `StatsScreen` accessible via a bar-chart icon in the library top bar. Shows per-book cover, title, first-read date, last-read date, total reading time, session count, and progress bar. Sorted by most recently read.
+- [x] **27. Track estimated words read and WPM per session**
+  Added `wordsRead: Int` to `ReadingSessionEntity`. Each finalized session estimates words as
+  `(adjustedDurationSeconds / 60 × 200)` (200 WPM average). Database migration 2→3 adds the
+  column. Stats screen shows total estimated words and a words-read goal.
 
-- [x] **12. Smarter session time tracking – idle detection**
-  `ReaderViewModel` now records a timestamp on every page turn. `ReadingRepositoryImpl.finalizeSession` takes these timestamps, computes per-page durations, discards outliers >3× average, and stores both adjusted (`durationSeconds`) and raw (`rawDurationSeconds`) durations. Database migrated to v2.
-
-- [x] **13. Global reading stats & yearly goals**
-  The Stats screen opens with a goals card showing year-to-date hours and books read with progress bars against configurable targets. All-time totals are shown below. Goals are persisted to SharedPreferences and editable via a dialog.
+- [x] **28. Goals: hours + words read (replaces books started)**
+  Replaced the "books started per year" goal with a "words read per year" goal (default 500 000).
+  Stats screen goal card updated accordingly.
 
 ---
 
 ## Reading Experience (future enhancements)
 
-- [x] **14. Persist reading preferences across sessions**
-  Font size, theme, and font family are now saved to SharedPreferences in `ReaderViewModel` and restored on next open. Settings apply globally across all books.
-
-- [ ] **15. TTS enhancements (after #6 is fixed)**
-  Once TTS is working, add:
-  - Voice selection from available system voices
-  - Speed adjustment (0.5×–2.0×)
-  - Visual word-level highlight following the spoken sentence (already scaffolded in `TtsHighlightSynchronizer`)
-
 - [ ] **16. Full-text search within a book**
-  Expose the search capability from the Readium navigator to let users search for text within the currently open book.
+  Expose the search capability from the Readium navigator to let users search for text within the
+  currently open book.
 
 - [ ] **17. Bookmarks**
-  Allow users to bookmark the current location and browse/navigate saved bookmarks via the TOC sheet or a dedicated tab.
+  Allow users to bookmark the current location and browse/navigate saved bookmarks via the TOC
+  sheet or a dedicated tab.

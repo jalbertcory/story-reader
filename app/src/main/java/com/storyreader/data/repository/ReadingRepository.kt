@@ -41,11 +41,13 @@ class ReadingRepositoryImpl(
         val rawDuration = ((nowMs - sessionStartMs) / 1000).toInt()
         val adjustedDuration = calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
         val pagesTurned = pageTurnTimestampsMs.size
+        val wordsRead = (adjustedDuration / 60.0 * 200).toInt()
         sessionDao.updateSession(
             session.copy(
                 durationSeconds = adjustedDuration,
                 rawDurationSeconds = rawDuration,
-                pagesTurned = pagesTurned
+                pagesTurned = pagesTurned,
+                wordsRead = wordsRead
             )
         )
     }

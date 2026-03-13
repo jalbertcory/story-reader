@@ -17,11 +17,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,8 +33,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +66,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.preferences.Theme
+import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -67,7 +76,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalReadiumApi::class)
 @Composable
 fun ReaderScreen(
     bookId: String,
@@ -76,7 +85,7 @@ fun ReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val preferences by viewModel.preferences.collectAsState()
-    val ttsPlaying by viewModel.ttsPlaying.collectAsState()
+    val ttsState by viewModel.ttsState.collectAsState()
     val currentLocator by viewModel.currentLocator.collectAsState()
     val showBars by viewModel.showBars.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
@@ -106,109 +115,148 @@ fun ReaderScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            AnimatedVisibility(
-                visible = showBars,
-                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
-            ) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = uiState.publication?.metadata?.title ?: "Loading...",
-                            maxLines = 1
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        if (uiState.publication != null) {
-                            IconButton(onClick = { showToc = true }) {
-                                Icon(@Suppress("DEPRECATION") Icons.Default.FormatListBulleted, contentDescription = "Table of Contents")
+    // Apply dark app chrome when reading with a dark/night theme
+    val isDarkReadingTheme = preferences.theme == Theme.DARK || preferences.isNightTheme()
+    val readerColorScheme = if (isDarkReadingTheme) darkColorScheme() else MaterialTheme.colorScheme
+
+    MaterialTheme(colorScheme = readerColorScheme) {
+        Scaffold(
+            topBar = {
+                AnimatedVisibility(
+                    visible = showBars,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+                ) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = uiState.publication?.metadata?.title ?: "Loading...",
+                                maxLines = 1
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            if (uiState.publication != null) {
+                                IconButton(onClick = { showToc = true }) {
+                                    Icon(
+                                        @Suppress("DEPRECATION") Icons.Default.FormatListBulleted,
+                                        contentDescription = "Table of Contents"
+                                    )
+                                }
+                            }
+                            // TTS toggle — only shown when not already playing (controls bar handles that)
+                            if (ttsState == TtsPlaybackState.STOPPED) {
+                                IconButton(onClick = { viewModel.startTts() }) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Start TTS",
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { showSettings = true }) {
+                                Icon(Icons.Default.Settings, contentDescription = "Settings")
                             }
                         }
-                        IconButton(onClick = { viewModel.setTtsPlaying(!ttsPlaying) }) {
-                            Icon(
-                                if (ttsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                contentDescription = if (ttsPlaying) "Stop TTS" else "Start TTS"
+                    )
+                }
+            }
+        ) { padding ->
+            val topPadding = if (showBars) padding.calculateTopPadding() else 0.dp
+            val bottomPadding = if (showBars) padding.calculateBottomPadding() else 0.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = topPadding, bottom = bottomPadding)
+            ) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when {
+                        uiState.isLoading -> {
+                            CircularProgressIndicator()
+                        }
+                        uiState.error != null -> {
+                            Text(
+                                text = uiState.error ?: "",
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        uiState.publication != null -> {
+                            EpubReaderContent(
+                                publication = uiState.publication!!,
+                                bookId = bookId,
+                                initialLocatorJson = uiState.initialLocatorJson,
+                                viewModel = viewModel
+                            )
                         }
                     }
-                )
-            }
-        }
-    ) { padding ->
-        val topPadding = if (showBars) padding.calculateTopPadding() else 0.dp
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = topPadding, bottom = padding.calculateBottomPadding())
-        ) {
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                when {
-                    uiState.isLoading -> {
-                        CircularProgressIndicator()
-                    }
-                    uiState.error != null -> {
-                        Text(
-                            text = uiState.error ?: "",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    uiState.publication != null -> {
-                        EpubReaderContent(
-                            publication = uiState.publication!!,
-                            bookId = bookId,
-                            initialLocatorJson = uiState.initialLocatorJson,
-                            viewModel = viewModel
+                }
+
+                // TTS controls bar — always visible when TTS is active
+                AnimatedVisibility(
+                    visible = ttsState != TtsPlaybackState.STOPPED,
+                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                ) {
+                    TtsControlsBar(
+                        isPlaying = ttsState == TtsPlaybackState.PLAYING,
+                        onPlayPause = viewModel::ttsPlayPause,
+                        onStop = viewModel::stopTts,
+                        onPrevious = viewModel::ttsSkipPrevious,
+                        onNext = viewModel::ttsSkipNext
+                    )
+                }
+
+                // Status bar (progress / chapter / time) — hidden in fullscreen
+                AnimatedVisibility(
+                    visible = showBars,
+                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                ) {
+                    if (uiState.publication != null) {
+                        ReaderStatusBar(
+                            locator = currentLocator,
+                            toc = uiState.publication!!.tableOfContents
                         )
                     }
                 }
             }
 
-            if (uiState.publication != null) {
-                ReaderStatusBar(
-                    locator = currentLocator,
-                    toc = uiState.publication!!.tableOfContents
+            if (showSettings) {
+                ReaderSettingsSheet(
+                    preferences = preferences,
+                    onPreferencesChange = { updated -> viewModel.updatePreferences { updated } },
+                    onDismiss = { showSettings = false }
                 )
             }
-        }
 
-        if (showSettings) {
-            ReaderSettingsSheet(
-                preferences = preferences,
-                onPreferencesChange = { updated -> viewModel.updatePreferences { updated } },
-                onDismiss = { showSettings = false }
-            )
-        }
-
-        if (showToc) {
-            TocSheet(
-                toc = uiState.publication?.tableOfContents.orEmpty(),
-                onNavigate = { link ->
-                    viewModel.navigateToLink(link)
-                    showToc = false
-                },
-                onDismiss = { showToc = false }
-            )
+            if (showToc) {
+                TocSheet(
+                    toc = uiState.publication?.tableOfContents.orEmpty(),
+                    onNavigate = { link ->
+                        viewModel.navigateToLink(link)
+                        showToc = false
+                    },
+                    onDismiss = { showToc = false }
+                )
+            }
         }
     }
 }
 
+@OptIn(ExperimentalReadiumApi::class)
+private fun EpubPreferences?.isNightTheme() =
+    this != null && theme == null && backgroundColor?.int == 0xFF000000.toInt()
+
 private fun chapterTitleFromToc(locator: Locator?, toc: List<Link>): String {
     if (locator == null) return ""
     val href = locator.href.toString()
-    // Flatten TOC (two levels) and find the best match by href prefix
     val allLinks = toc.flatMap { link -> listOf(link) + (link.children ?: emptyList()) }
     return allLinks
         .filter { link -> href.startsWith(link.href.toString().substringBefore("#")) }
@@ -216,6 +264,45 @@ private fun chapterTitleFromToc(locator: Locator?, toc: List<Link>): String {
         ?.title
         ?: locator.title
         ?: ""
+}
+
+@Composable
+private fun TtsControlsBar(
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onStop: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onPrevious) {
+                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous sentence")
+            }
+            IconButton(onClick = onPlayPause) {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            IconButton(onClick = onStop) {
+                Icon(Icons.Default.Stop, contentDescription = "Stop TTS", modifier = Modifier.size(28.dp))
+            }
+            IconButton(onClick = onNext) {
+                Icon(Icons.Default.SkipNext, contentDescription = "Next sentence")
+            }
+        }
+    }
 }
 
 @Composable
@@ -306,7 +393,7 @@ private fun EpubReaderContent(
                 )
             }
         },
-        update = { view ->
+        update = { _ ->
             val fm = activity.supportFragmentManager
             if (fm.findFragmentByTag(navigatorTag) == null) {
                 fm.fragmentFactory = fragmentFactory
