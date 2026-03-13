@@ -18,7 +18,7 @@ class StoryReaderApplication : Application() {
     val epubRepository: EpubRepository by lazy { EpubRepository(this) }
 
     val bookRepository: BookRepository by lazy {
-        BookRepositoryImpl(database.bookDao(), epubRepository)
+        BookRepositoryImpl(this, database.bookDao(), epubRepository)
     }
 
     val readingRepository: ReadingRepository by lazy {

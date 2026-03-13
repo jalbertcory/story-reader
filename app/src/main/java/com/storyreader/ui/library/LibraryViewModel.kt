@@ -10,10 +10,12 @@ import com.storyreader.data.repository.BookRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
+    val lastReadTimes: Map<String, Long> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val hasNextcloudCredentials: Boolean = false
@@ -23,18 +25,26 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val app = application as StoryReaderApplication
     private val repository: BookRepository = app.bookRepository
+    private val sessionDao = app.database.readingSessionDao()
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            repository.observeAll().collect { books ->
-                _uiState.value = _uiState.value.copy(
+            combine(
+                repository.observeAll(),
+                sessionDao.getLastReadTimes()
+            ) { books, lastReads ->
+                val lastReadMap = lastReads.associate { it.bookId to it.lastReadAt }
+                _uiState.value.copy(
                     books = books,
+                    lastReadTimes = lastReadMap,
                     isLoading = false,
                     hasNextcloudCredentials = app.credentialsManager.hasCredentials
                 )
+            }.collect { state ->
+                _uiState.value = state
             }
         }
     }

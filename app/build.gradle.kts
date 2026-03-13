@@ -97,6 +97,9 @@ dependencies {
     // Fragment
     implementation(libs.fragment.ktx)
 
+    // Image loading
+    implementation(libs.coil.compose)
+
     // Unit tests
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

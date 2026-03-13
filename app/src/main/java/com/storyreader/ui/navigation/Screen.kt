@@ -9,4 +9,5 @@ sealed class Screen(val route: String) {
     }
     data object SyncSettings : Screen("sync_settings")
     data object NextcloudBrowser : Screen("nextcloud_browser")
+    data object Stats : Screen("stats")
 }

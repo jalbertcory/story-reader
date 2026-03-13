@@ -10,7 +10,7 @@ interface ReadingRepository {
     fun observeLatestPosition(bookId: String): Flow<ReadingPositionEntity?>
     suspend fun savePosition(bookId: String, locatorJson: String)
     suspend fun startSession(bookId: String): Long
-    suspend fun finalizeSession(sessionId: Long, durationSeconds: Int, pagesTurned: Int)
+    suspend fun finalizeSession(sessionId: Long, pageTurnTimestampsMs: List<Long>, sessionStartMs: Long)
     fun observeSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>>
 }
 
@@ -31,9 +31,41 @@ class ReadingRepositoryImpl(
     override suspend fun startSession(bookId: String): Long =
         sessionDao.insert(ReadingSessionEntity(bookId = bookId))
 
-    override suspend fun finalizeSession(sessionId: Long, durationSeconds: Int, pagesTurned: Int) {
+    override suspend fun finalizeSession(
+        sessionId: Long,
+        pageTurnTimestampsMs: List<Long>,
+        sessionStartMs: Long
+    ) {
         val session = sessionDao.getById(sessionId) ?: return
-        sessionDao.updateSession(session.copy(durationSeconds = durationSeconds, pagesTurned = pagesTurned))
+        val nowMs = System.currentTimeMillis()
+        val rawDuration = ((nowMs - sessionStartMs) / 1000).toInt()
+        val adjustedDuration = calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
+        val pagesTurned = pageTurnTimestampsMs.size
+        sessionDao.updateSession(
+            session.copy(
+                durationSeconds = adjustedDuration,
+                rawDurationSeconds = rawDuration,
+                pagesTurned = pagesTurned
+            )
+        )
+    }
+
+    /**
+     * Computes reading time by discarding any page where the reader spent more than 3× the
+     * per-session average (idle detection).
+     */
+    private fun calcAdjustedDuration(
+        sessionStartMs: Long,
+        pageTurnsMs: List<Long>,
+        endMs: Long
+    ): Int {
+        // Build list of time-on-page intervals: start → first turn, turn_i → turn_i+1, last → end
+        val allPoints = listOf(sessionStartMs) + pageTurnsMs + listOf(endMs)
+        val intervals = allPoints.zipWithNext { a, b -> (b - a).coerceAtLeast(0L) }
+        if (intervals.isEmpty()) return 0
+        val avgMs = intervals.average()
+        val threshold = avgMs * 3.0
+        return (intervals.filter { it <= threshold }.sum() / 1000).toInt()
     }
 
     override fun observeSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =
