@@ -9,12 +9,16 @@ import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.reader.epub.EpubRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.shared.publication.Link
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 
 data class ReaderUiState(
@@ -41,6 +45,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val _ttsPlaying = MutableStateFlow(false)
     val ttsPlaying: StateFlow<Boolean> = _ttsPlaying.asStateFlow()
 
+    private val _currentLocator = MutableStateFlow<Locator?>(null)
+    val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
+
+    private var navigator: EpubNavigatorFragment? = null
+    private var locatorJob: Job? = null
     private var currentBookId: String? = null
     private var currentSessionId: Long? = null
     private var sessionStartMs: Long = 0L
@@ -76,11 +85,36 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun onProgressionChanged(bookId: String, locatorJson: String, progression: Float) {
+    fun onProgressionChanged(bookId: String, locator: Locator) {
+        _currentLocator.value = locator
         viewModelScope.launch {
-            readingRepository.savePosition(bookId, locatorJson)
-            bookRepository.updateProgression(bookId, progression)
+            readingRepository.savePosition(bookId, locator.toJSON().toString())
+            bookRepository.updateProgression(
+                bookId,
+                locator.locations.totalProgression?.toFloat() ?: 0f
+            )
             pagesTurned++
+        }
+    }
+
+    fun onNavigatorReady(nav: EpubNavigatorFragment) {
+        if (navigator === nav) return
+        navigator = nav
+        val bookId = currentBookId ?: return
+        locatorJob?.cancel()
+        locatorJob = viewModelScope.launch {
+            nav.currentLocator.collect { locator ->
+                onProgressionChanged(bookId, locator)
+            }
+        }
+    }
+
+    fun navigateToLink(link: Link) {
+        val nav = navigator ?: return
+        val pub = _uiState.value.publication ?: return
+        val locator = pub.locatorFromLink(link) ?: return
+        viewModelScope.launch {
+            nav.go(locator)
         }
     }
 
