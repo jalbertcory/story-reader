@@ -25,15 +25,17 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun StoryReaderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    forceDark: Boolean? = null,
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val effectiveDark = forceDark ?: darkTheme
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (effectiveDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
+        effectiveDark -> DarkColorScheme
         else -> LightColorScheme
     }
 

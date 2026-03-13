@@ -50,6 +50,8 @@ private const val PREFS_NAME = "reader_preferences"
 private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_THEME = "theme"
 private const val KEY_FONT_FAMILY = "font_family"
+// Night theme uses null theme + custom colors; we store a separate flag for the dark-chrome effect
+private const val KEY_IS_NIGHT = "is_night_theme"
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -64,7 +66,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     private val _preferences = MutableStateFlow(loadSavedPreferences())
-
     val preferences: StateFlow<EpubPreferences> = _preferences.asStateFlow()
 
     private fun loadSavedPreferences(): EpubPreferences {
@@ -78,10 +79,23 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val fontFamily = prefStore.getString(KEY_FONT_FAMILY, null)
             ?.takeIf { it.isNotEmpty() }
             ?.let { FontFamily(it) }
-        return EpubPreferences(fontSize = fontSize, theme = theme, fontFamily = fontFamily)
+        val isNight = prefStore.getBoolean(KEY_IS_NIGHT, false)
+        return if (isNight) {
+            EpubPreferences(
+                fontSize = fontSize,
+                fontFamily = fontFamily,
+                theme = null,
+                backgroundColor = org.readium.r2.navigator.preferences.Color(0xFF000000.toInt()),
+                textColor = org.readium.r2.navigator.preferences.Color(0xFFFF7722.toInt()),
+                publisherStyles = false
+            )
+        } else {
+            EpubPreferences(fontSize = fontSize, theme = theme, fontFamily = fontFamily)
+        }
     }
 
     private fun savePreferences(prefs: EpubPreferences) {
+        val isNight = prefs.backgroundColor?.int == 0xFF000000.toInt()
         prefStore.edit().apply {
             if (prefs.fontSize != null) putFloat(KEY_FONT_SIZE, prefs.fontSize!!.toFloat())
             else remove(KEY_FONT_SIZE)
@@ -91,7 +105,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 else -> null
             })
             putString(KEY_FONT_FAMILY, prefs.fontFamily?.name ?: "")
+            putBoolean(KEY_IS_NIGHT, isNight)
         }.apply()
+        // Update global dark-chrome flag
+        app.isDarkReadingTheme.value = prefs.theme == Theme.DARK || isNight
     }
 
     // TTS state
@@ -120,6 +137,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var currentBookId: String? = null
     private var currentSessionId: Long? = null
     private var sessionStartMs: Long = 0L
+    private var sessionStartProgression: Float = 0f
     private val pageTurnTimestamps = mutableListOf<Long>()
 
     fun openBook(bookId: String) {
@@ -131,6 +149,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
             val savedPosition = readingRepository.observeLatestPosition(bookId).firstOrNull()
             val uri = Uri.parse(bookId)
+
+            // Capture start progression from saved position for accurate words-read calculation
+            sessionStartProgression = savedPosition?.let { pos ->
+                try {
+                    val json = org.json.JSONObject(pos.locatorJson)
+                    val locations = json.optJSONObject("locations")
+                    locations?.optDouble("totalProgression", 0.0)?.toFloat() ?: 0f
+                } catch (_: Exception) { 0f }
+            } ?: 0f
 
             epubRepository.openPublication(uri)
                 .onSuccess { publication ->
@@ -156,7 +183,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun onProgressionChanged(bookId: String, locator: Locator) {
         _currentLocator.value = locator
         pageTurnTimestamps.add(System.currentTimeMillis())
-        // Debounce saves by 300 ms to absorb rapid updates during webview reflow
+        // Debounce only the DB write — the UI locator (_currentLocator) updates immediately.
+        // A 300 ms debounce absorbs any rapid updates that may fire during fragment attach,
+        // but the WebView size never changes so location should be stable after the first update.
         savePositionJob?.cancel()
         savePositionJob = viewModelScope.launch {
             delay(300)
@@ -183,12 +212,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             .onEach { prefs -> nav.submitPreferences(prefs) }
             .launchIn(viewModelScope)
 
-        val overflowableNav = nav as? OverflowableNavigator
-        if (overflowableNav != null) {
-            nav.addInputListener(DirectionalNavigationAdapter(overflowableNav))
-        }
+        // IMPORTANT: Register our custom tap handler FIRST so it takes priority.
+        // When TTS is active, ALL taps become play/pause and are consumed (return true),
+        // which prevents DirectionalNavigationAdapter from receiving them.
         nav.addInputListener(object : InputListener {
             override fun onTap(event: TapEvent): Boolean {
+                // In TTS mode: any tap toggles play/pause; block all other interactions
+                if (_ttsState.value != TtsPlaybackState.STOPPED) {
+                    ttsPlayPause()
+                    return true
+                }
+                // Normal mode: center tap toggles bars; edge taps handled by DirectionalNavigationAdapter below
                 val viewWidth = nav.publicationView.width.toFloat()
                 val edgeSize = viewWidth * 0.3f
                 if (event.point.x in edgeSize..(viewWidth - edgeSize)) {
@@ -198,6 +232,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 return false
             }
         })
+
+        // Page-turn on edge taps (registered after our handler so TTS mode blocks it)
+        val overflowableNav = nav as? OverflowableNavigator
+        if (overflowableNav != null) {
+            nav.addInputListener(DirectionalNavigationAdapter(overflowableNav))
+        }
     }
 
     fun navigateToLink(link: Link) {
@@ -215,7 +255,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         savePreferences(updated)
     }
 
-    // TTS controls
+    // ── TTS controls ────────────────────────────────────────────────────────────
 
     fun startTts() {
         if (_ttsState.value != TtsPlaybackState.STOPPED) return
@@ -266,15 +306,50 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         _ttsState.value = TtsPlaybackState.STOPPED
     }
 
-    fun ttsSkipPrevious() = ttsNavigator?.skipToPreviousUtterance()
-    fun ttsSkipNext() = ttsNavigator?.skipToNextUtterance()
+    /**
+     * Skips backward: stop TTS, go to previous page/resource, restart TTS from new position.
+     * Uses page navigation rather than utterance-level skipping to provide meaningful "chapter skip".
+     */
+    fun ttsSkipPrevious() {
+        val nav = navigator as? OverflowableNavigator ?: return
+        viewModelScope.launch {
+            stopTts()
+            nav.goBackward()
+            delay(200) // allow navigator to settle to new position
+            startTts()
+        }
+    }
+
+    /**
+     * Skips forward: stop TTS, go to next page/resource, restart TTS from new position.
+     */
+    fun ttsSkipNext() {
+        val nav = navigator as? OverflowableNavigator ?: return
+        viewModelScope.launch {
+            stopTts()
+            nav.goForward()
+            delay(200) // allow navigator to settle to new position
+            startTts()
+        }
+    }
 
     fun finalizeSession() {
         val sessionId = currentSessionId ?: return
         val capturedTimestamps = pageTurnTimestamps.toList()
         val capturedStartMs = sessionStartMs
+        val capturedStartProgression = sessionStartProgression
+        val capturedEndProgression = _currentLocator.value?.locations?.totalProgression?.toFloat() ?: capturedStartProgression
+        val bookId = currentBookId ?: return
         viewModelScope.launch {
-            readingRepository.finalizeSession(sessionId, capturedTimestamps, capturedStartMs)
+            val wordCount = bookRepository.getWordCount(bookId)
+            readingRepository.finalizeSession(
+                sessionId = sessionId,
+                pageTurnTimestampsMs = capturedTimestamps,
+                sessionStartMs = capturedStartMs,
+                progressionStart = capturedStartProgression,
+                progressionEnd = capturedEndProgression,
+                bookWordCount = wordCount
+            )
         }
         currentSessionId = null
     }

@@ -9,5 +9,6 @@ data class BookEntity(
     val title: String,
     val author: String,
     val coverUri: String? = null,
-    val totalProgression: Float = 0f
+    val totalProgression: Float = 0f,
+    val wordCount: Int = 0
 )

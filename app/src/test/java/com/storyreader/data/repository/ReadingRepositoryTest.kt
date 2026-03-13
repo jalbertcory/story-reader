@@ -78,7 +78,7 @@ class ReadingRepositoryTest {
         // 15 evenly-spaced page turns over 420 seconds
         val stepMs = 420_000L / 15
         val timestamps = (1..15).map { startMs + it * stepMs }
-        repository.finalizeSession(sessionId, pageTurnTimestampsMs = timestamps, sessionStartMs = startMs)
+        repository.finalizeSession(sessionId, pageTurnTimestampsMs = timestamps, sessionStartMs = startMs, progressionStart = 0f, progressionEnd = 0.1f, bookWordCount = 50000)
 
         val session = db.readingSessionDao().getById(sessionId)
         // Adjusted duration should be close to 420s (no outliers since pages are evenly spaced)
@@ -92,7 +92,7 @@ class ReadingRepositoryTest {
     @Test
     fun `finalizeSession on missing id does nothing`() = runTest {
         // Should not throw
-        repository.finalizeSession(sessionId = 9999L, pageTurnTimestampsMs = emptyList(), sessionStartMs = System.currentTimeMillis())
+        repository.finalizeSession(sessionId = 9999L, pageTurnTimestampsMs = emptyList(), sessionStartMs = System.currentTimeMillis(), progressionStart = 0f, progressionEnd = 0f, bookWordCount = 0)
     }
 
     @Test

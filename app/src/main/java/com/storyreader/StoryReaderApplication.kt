@@ -10,6 +10,7 @@ import com.storyreader.data.sync.SyncCredentialsManager
 import com.storyreader.data.sync.SyncScheduler
 import com.storyreader.data.sync.WebDavSyncRepository
 import com.storyreader.reader.epub.EpubRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class StoryReaderApplication : Application() {
 
@@ -33,8 +34,22 @@ class StoryReaderApplication : Application() {
         WebDavSyncRepository(credentialsManager, database.readingPositionDao(), database.readingSessionDao())
     }
 
+    // Global flag that drives dark app-chrome (top bar, nav bar, status bar tint) when
+    // the reader is open with a dark or night theme. Updated by ReaderViewModel and
+    // AppSettingsViewModel whenever the theme preference changes.
+    val isDarkReadingTheme: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
     override fun onCreate() {
         super.onCreate()
+        // Restore dark-chrome flag from saved reading preferences so the app starts with
+        // the correct theme even before the reader is opened.
+        val savedTheme = getSharedPreferences("reader_preferences", MODE_PRIVATE)
+            .getString("theme", null)
+        val isNight = getSharedPreferences("reader_preferences", MODE_PRIVATE)
+            .getBoolean("is_night_theme", false)
+        isDarkReadingTheme.value = savedTheme == "DARK" || isNight
+        // Note: night theme (custom colors) is detected differently — ReaderViewModel updates this flag
+
         if (credentialsManager.hasCredentials) {
             SyncScheduler.schedulePeriodicSync(this)
         }
