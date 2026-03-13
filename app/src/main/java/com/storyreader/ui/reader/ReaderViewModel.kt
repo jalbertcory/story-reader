@@ -10,6 +10,7 @@ import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.reader.epub.EpubRepository
+import com.storyreader.reader.tts.TtsHighlightSynchronizer
 import com.storyreader.reader.tts.TtsManager
 import com.storyreader.reader.tts.TtsMediaService
 import kotlinx.coroutines.Job
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
 import org.readium.navigator.media.tts.AndroidTtsNavigator
 import org.readium.navigator.media.tts.TtsNavigator
 import org.readium.r2.navigator.OverflowableNavigator
+import org.readium.r2.navigator.VisualNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.input.InputListener
@@ -116,6 +118,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     val ttsState: StateFlow<TtsPlaybackState> = _ttsState.asStateFlow()
 
     private val ttsManager = TtsManager(application)
+    private val ttsHighlightSynchronizer = TtsHighlightSynchronizer(viewModelScope)
     private var ttsNavigator: AndroidTtsNavigator? = null
     private var ttsServiceBinder: TtsMediaService.LocalBinder? = null
     private var ttsJob: Job? = null
@@ -212,6 +215,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             .onEach { prefs -> nav.submitPreferences(prefs) }
             .launchIn(viewModelScope)
 
+        ttsNavigator?.let { activeTtsNavigator ->
+            ttsHighlightSynchronizer.startSync(activeTtsNavigator, nav)
+        }
+
         // IMPORTANT: Register our custom tap handler FIRST so it takes priority.
         // When TTS is active, ALL taps become play/pause and are consumed (return true),
         // which prevents DirectionalNavigationAdapter from receiving them.
@@ -260,13 +267,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun startTts() {
         if (_ttsState.value != TtsPlaybackState.STOPPED) return
         ttsJob = viewModelScope.launch {
-            val startLocator = _currentLocator.value
+            val startLocator = (navigator as? VisualNavigator)?.firstVisibleElementLocator()
+                ?: _currentLocator.value
             val nav = ttsManager.start(startLocator) ?: return@launch
             ttsNavigator = nav
 
             val binder = TtsMediaService.bind(getApplication())
             ttsServiceBinder = binder
             binder?.openSession(nav)
+            navigator?.let { epubNavigator ->
+                ttsHighlightSynchronizer.startSync(nav, epubNavigator)
+            }
 
             nav.play()
             _ttsState.value = TtsPlaybackState.PLAYING
@@ -298,6 +309,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun stopTts() {
         ttsJob?.cancel()
         ttsJob = null
+        ttsHighlightSynchronizer.stopSync()
+        navigator?.let { epubNavigator ->
+            viewModelScope.launch {
+                ttsHighlightSynchronizer.clearHighlights(epubNavigator)
+            }
+        }
         ttsNavigator?.close()
         ttsNavigator = null
         ttsManager.stop()

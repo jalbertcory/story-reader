@@ -7,9 +7,13 @@ import org.readium.navigator.media.tts.android.AndroidTtsEngine
 import org.readium.navigator.media.tts.android.AndroidTtsEngineProvider
 import org.readium.navigator.media.tts.android.AndroidTtsPreferences
 import org.readium.navigator.media.tts.android.AndroidTtsSettings
+import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.tokenizer.DefaultTextContentTokenizer
+import org.readium.r2.shared.util.tokenizer.TextUnit
 
+@OptIn(ExperimentalReadiumApi::class)
 class TtsManager(private val application: Application) {
 
     private var ttsNavigator: TtsNavigator<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? = null
@@ -18,7 +22,16 @@ class TtsManager(private val application: Application) {
     fun initialize(publication: Publication): Boolean {
         return try {
             val engineProvider = AndroidTtsEngineProvider(application)
-            factory = TtsNavigatorFactory(application, publication, engineProvider)
+            factory = TtsNavigatorFactory(
+                application = application,
+                publication = publication,
+                ttsEngineProvider = engineProvider,
+                tokenizerFactory = { language ->
+                    // Keep utterances sentence-sized for smooth playback while still allowing
+                    // token-level range callbacks from the engine for visual highlighting.
+                    DefaultTextContentTokenizer(TextUnit.Sentence, language)
+                }
+            )
             true
         } catch (e: Exception) {
             false
