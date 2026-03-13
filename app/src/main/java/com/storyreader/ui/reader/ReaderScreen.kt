@@ -1,12 +1,14 @@
 package com.storyreader.ui.reader
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.os.BatteryManager
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +34,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,19 +44,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
-
 import kotlinx.coroutines.isActive
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import java.text.SimpleDateFormat
@@ -71,6 +78,7 @@ fun ReaderScreen(
     val preferences by viewModel.preferences.collectAsState()
     val ttsPlaying by viewModel.ttsPlaying.collectAsState()
     val currentLocator by viewModel.currentLocator.collectAsState()
+    val showBars by viewModel.showBars.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
 
@@ -82,41 +90,66 @@ fun ReaderScreen(
         onDispose { viewModel.finalizeSession() }
     }
 
+    // Show/hide system bars to match app bar state
+    val view = LocalView.current
+    val window = (view.context as? FragmentActivity)?.window
+    SideEffect {
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, view)
+            if (showBars) {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = uiState.publication?.metadata?.title ?: "Loading...",
-                        maxLines = 1
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (uiState.publication != null) {
-                        IconButton(onClick = { showToc = true }) {
-                            Icon(@Suppress("DEPRECATION") Icons.Default.FormatListBulleted, contentDescription = "Table of Contents")
+            AnimatedVisibility(
+                visible = showBars,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+            ) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = uiState.publication?.metadata?.title ?: "Loading...",
+                            maxLines = 1
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        if (uiState.publication != null) {
+                            IconButton(onClick = { showToc = true }) {
+                                Icon(@Suppress("DEPRECATION") Icons.Default.FormatListBulleted, contentDescription = "Table of Contents")
+                            }
+                        }
+                        IconButton(onClick = { viewModel.setTtsPlaying(!ttsPlaying) }) {
+                            Icon(
+                                if (ttsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                contentDescription = if (ttsPlaying) "Stop TTS" else "Start TTS"
+                            )
+                        }
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
                         }
                     }
-                    IconButton(onClick = { viewModel.setTtsPlaying(!ttsPlaying) }) {
-                        Icon(
-                            if (ttsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = if (ttsPlaying) "Stop TTS" else "Start TTS"
-                        )
-                    }
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
+        val topPadding = if (showBars) padding.calculateTopPadding() else 0.dp
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = topPadding, bottom = padding.calculateBottomPadding())
         ) {
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -144,7 +177,10 @@ fun ReaderScreen(
             }
 
             if (uiState.publication != null) {
-                ReaderStatusBar(locator = currentLocator)
+                ReaderStatusBar(
+                    locator = currentLocator,
+                    toc = uiState.publication!!.tableOfContents
+                )
             }
         }
 
@@ -158,7 +194,7 @@ fun ReaderScreen(
 
         if (showToc) {
             TocSheet(
-                toc = uiState.publication?.tableOfContents ?: emptyList(),
+                toc = uiState.publication?.tableOfContents.orEmpty(),
                 onNavigate = { link ->
                     viewModel.navigateToLink(link)
                     showToc = false
@@ -169,8 +205,21 @@ fun ReaderScreen(
     }
 }
 
+private fun chapterTitleFromToc(locator: Locator?, toc: List<Link>): String {
+    if (locator == null) return ""
+    val href = locator.href.toString()
+    // Flatten TOC (two levels) and find the best match by href prefix
+    val allLinks = toc.flatMap { link -> listOf(link) + (link.children ?: emptyList()) }
+    return allLinks
+        .filter { link -> href.startsWith(link.href.toString().substringBefore("#")) }
+        .maxByOrNull { it.href.toString().length }
+        ?.title
+        ?: locator.title
+        ?: ""
+}
+
 @Composable
-private fun ReaderStatusBar(locator: Locator?) {
+private fun ReaderStatusBar(locator: Locator?, toc: List<Link>) {
     val context = LocalContext.current
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     var currentTime by remember { mutableStateOf(timeFormat.format(Date())) }
@@ -185,10 +234,10 @@ private fun ReaderStatusBar(locator: Locator?) {
     }
 
     val progressText = locator?.locations?.totalProgression?.let {
-        "${(it * 100).toInt()}%"
+        "${"%.1f".format(it * 100)}%"
     } ?: ""
 
-    val chapterTitle = locator?.title ?: ""
+    val chapterTitle = chapterTitleFromToc(locator, toc)
 
     Row(
         modifier = Modifier

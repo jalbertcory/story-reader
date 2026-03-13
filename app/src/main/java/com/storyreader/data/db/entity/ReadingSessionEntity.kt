@@ -21,6 +21,7 @@ data class ReadingSessionEntity(
     @PrimaryKey(autoGenerate = true) val sessionId: Long = 0,
     val bookId: String,
     val startTime: Long = System.currentTimeMillis(),
-    val durationSeconds: Int = 0,
+    val durationSeconds: Int = 0,       // Idle-adjusted reading time
+    val rawDurationSeconds: Int = 0,    // Total elapsed time including idle
     val pagesTurned: Int = 0
 )

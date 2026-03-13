@@ -1,10 +1,16 @@
 package com.storyreader.data.repository
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import com.storyreader.data.db.dao.BookDao
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.reader.epub.EpubRepository
 import kotlinx.coroutines.flow.Flow
+import org.readium.r2.shared.publication.services.cover
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 
 interface BookRepository {
     fun observeAll(): Flow<List<BookEntity>>
@@ -16,6 +22,7 @@ interface BookRepository {
 }
 
 class BookRepositoryImpl(
+    private val context: Context,
     private val bookDao: BookDao,
     private val epubRepository: EpubRepository
 ) : BookRepository {
@@ -33,12 +40,28 @@ class BookRepositoryImpl(
 
     override suspend fun importFromUri(uri: Uri): Result<BookEntity> {
         return epubRepository.openPublication(uri).map { publication ->
+            val coverUri = saveCover(publication.cover())
             BookEntity(
                 bookId = uri.toString(),
                 title = publication.metadata.title ?: "Untitled",
                 author = publication.metadata.authors.joinToString { it.name },
-                coverUri = null
+                coverUri = coverUri
             ).also { bookDao.insert(it) }
+        }
+    }
+
+    private fun saveCover(bitmap: Bitmap?): String? {
+        bitmap ?: return null
+        return try {
+            val dir = File(context.filesDir, "covers")
+            dir.mkdirs()
+            val file = File(dir, "${UUID.randomUUID()}.jpg")
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            }
+            file.absolutePath
+        } catch (_: Exception) {
+            null
         }
     }
 }

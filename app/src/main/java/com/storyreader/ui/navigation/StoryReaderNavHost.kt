@@ -10,6 +10,7 @@ import com.storyreader.ui.library.LibraryScreen
 import com.storyreader.ui.library.NextcloudBrowserScreen
 import com.storyreader.ui.library.SyncSettingsScreen
 import com.storyreader.ui.reader.ReaderScreen
+import com.storyreader.ui.stats.StatsScreen
 
 @Composable
 fun StoryReaderNavHost() {
@@ -26,6 +27,9 @@ fun StoryReaderNavHost() {
                 },
                 onNextcloudImportClick = {
                     navController.navigate(Screen.NextcloudBrowser.route)
+                },
+                onStatsClick = {
+                    navController.navigate(Screen.Stats.route)
                 }
             )
         }
@@ -46,6 +50,11 @@ fun StoryReaderNavHost() {
         }
         composable(Screen.NextcloudBrowser.route) {
             NextcloudBrowserScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Stats.route) {
+            StatsScreen(
                 onBack = { navController.popBackStack() }
             )
         }
