@@ -8,6 +8,7 @@ import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.data.repository.ReadingRepositoryImpl
 import com.storyreader.data.sync.SyncCredentialsManager
 import com.storyreader.data.sync.SyncScheduler
+import com.storyreader.data.sync.WebDavSyncRepository
 import com.storyreader.reader.epub.EpubRepository
 
 class StoryReaderApplication : Application() {
@@ -24,9 +25,16 @@ class StoryReaderApplication : Application() {
         ReadingRepositoryImpl(database.readingPositionDao(), database.readingSessionDao())
     }
 
+    val credentialsManager: SyncCredentialsManager by lazy {
+        SyncCredentialsManager.create(this)
+    }
+
+    val webDavSyncRepository: WebDavSyncRepository by lazy {
+        WebDavSyncRepository(credentialsManager, database.readingPositionDao(), database.readingSessionDao())
+    }
+
     override fun onCreate() {
         super.onCreate()
-        val credentialsManager = SyncCredentialsManager.create(this)
         if (credentialsManager.hasCredentials) {
             SyncScheduler.schedulePeriodicSync(this)
         }
