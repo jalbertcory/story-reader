@@ -272,6 +272,7 @@ fun ReaderScreen(
         if (showToc) {
             TocSheet(
                 toc = uiState.publication?.tableOfContents.orEmpty(),
+                currentLocator = currentLocator,
                 onNavigate = { link ->
                     viewModel.navigateToLink(link)
                     showToc = false
