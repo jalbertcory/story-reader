@@ -15,13 +15,14 @@ import kotlinx.coroutines.launch
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
     val isLoading: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val hasNextcloudCredentials: Boolean = false
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: BookRepository =
-        (application as StoryReaderApplication).bookRepository
+    private val app = application as StoryReaderApplication
+    private val repository: BookRepository = app.bookRepository
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -29,9 +30,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     init {
         viewModelScope.launch {
             repository.observeAll().collect { books ->
-                _uiState.value = LibraryUiState(books = books)
+                _uiState.value = _uiState.value.copy(
+                    books = books,
+                    isLoading = false,
+                    hasNextcloudCredentials = app.credentialsManager.hasCredentials
+                )
             }
         }
+    }
+
+    fun refreshCredentials() {
+        _uiState.value = _uiState.value.copy(
+            hasNextcloudCredentials = app.credentialsManager.hasCredentials
+        )
     }
 
     fun importBook(uri: Uri) {

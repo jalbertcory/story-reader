@@ -1,10 +1,23 @@
 package com.storyreader.ui.reader
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
@@ -21,19 +34,31 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidViewBinding
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
+import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.storyreader.databinding.FragmentReaderContainerBinding
+import kotlinx.coroutines.delay
+
+import kotlinx.coroutines.isActive
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +70,9 @@ fun ReaderScreen(
     val uiState by viewModel.uiState.collectAsState()
     val preferences by viewModel.preferences.collectAsState()
     val ttsPlaying by viewModel.ttsPlaying.collectAsState()
+    val currentLocator by viewModel.currentLocator.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
+    var showToc by remember { mutableStateOf(false) }
 
     LaunchedEffect(bookId) {
         viewModel.openBook(bookId)
@@ -70,6 +97,11 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
+                    if (uiState.publication != null) {
+                        IconButton(onClick = { showToc = true }) {
+                            Icon(@Suppress("DEPRECATION") Icons.Default.FormatListBulleted, contentDescription = "Table of Contents")
+                        }
+                    }
                     IconButton(onClick = { viewModel.setTtsPlaying(!ttsPlaying) }) {
                         Icon(
                             if (ttsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -83,27 +115,36 @@ fun ReaderScreen(
             )
         }
     ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding)
         ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator()
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    uiState.isLoading -> {
+                        CircularProgressIndicator()
+                    }
+                    uiState.error != null -> {
+                        Text(
+                            text = uiState.error ?: "",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    uiState.publication != null -> {
+                        EpubReaderContent(
+                            publication = uiState.publication!!,
+                            bookId = bookId,
+                            initialLocatorJson = uiState.initialLocatorJson,
+                            viewModel = viewModel
+                        )
+                    }
                 }
-                uiState.error != null -> {
-                    Text(
-                        text = uiState.error ?: "",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                uiState.publication != null -> {
-                    EpubReaderContent(
-                        publication = uiState.publication!!,
-                        bookId = bookId,
-                        viewModel = viewModel
-                    )
-                }
+            }
+
+            if (uiState.publication != null) {
+                ReaderStatusBar(locator = currentLocator)
             }
         }
 
@@ -114,34 +155,130 @@ fun ReaderScreen(
                 onDismiss = { showSettings = false }
             )
         }
+
+        if (showToc) {
+            TocSheet(
+                toc = uiState.publication?.tableOfContents ?: emptyList(),
+                onNavigate = { link ->
+                    viewModel.navigateToLink(link)
+                    showToc = false
+                },
+                onDismiss = { showToc = false }
+            )
+        }
     }
+}
+
+@Composable
+private fun ReaderStatusBar(locator: Locator?) {
+    val context = LocalContext.current
+    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+    var currentTime by remember { mutableStateOf(timeFormat.format(Date())) }
+    var batteryPct by remember { mutableIntStateOf(getBatteryLevel(context)) }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            currentTime = timeFormat.format(Date())
+            batteryPct = getBatteryLevel(context)
+            delay(30_000)
+        }
+    }
+
+    val progressText = locator?.locations?.totalProgression?.let {
+        "${(it * 100).toInt()}%"
+    } ?: ""
+
+    val chapterTitle = locator?.title ?: ""
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 12.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = progressText,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = chapterTitle,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(3f)
+        )
+        Text(
+            text = "$currentTime  $batteryPct%",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1.5f)
+        )
+    }
+}
+
+private fun getBatteryLevel(context: Context): Int {
+    val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
 }
 
 @Composable
 private fun EpubReaderContent(
     publication: Publication,
     bookId: String,
+    initialLocatorJson: String?,
     viewModel: ReaderViewModel
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity ?: return
 
     val navigatorTag = remember(bookId) { "epub_navigator_$bookId" }
-    val navigatorFactory = remember(publication) {
-        EpubNavigatorFactory(publication)
+    val containerId = remember { View.generateViewId() }
+    val initialLocator = remember(initialLocatorJson) {
+        initialLocatorJson?.let { Locator.fromJSON(org.json.JSONObject(it)) }
+    }
+    val fragmentFactory = remember(publication, initialLocator) {
+        EpubNavigatorFactory(publication).createFragmentFactory(initialLocator = initialLocator)
     }
 
-    AndroidViewBinding(
-        factory = FragmentReaderContainerBinding::inflate,
+    AndroidView(
+        factory = { ctx ->
+            FragmentContainerView(ctx).apply {
+                id = containerId
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        },
+        update = { view ->
+            val fm = activity.supportFragmentManager
+            if (fm.findFragmentByTag(navigatorTag) == null) {
+                fm.fragmentFactory = fragmentFactory
+                fm.beginTransaction()
+                    .replace(containerId, EpubNavigatorFragment::class.java, null, navigatorTag)
+                    .commitNow()
+            }
+            val nav = fm.findFragmentByTag(navigatorTag) as? EpubNavigatorFragment
+            if (nav != null) {
+                viewModel.onNavigatorReady(nav)
+            }
+        },
         modifier = Modifier.fillMaxSize()
-    ) {
-        val fragmentManager = activity.supportFragmentManager
-        if (fragmentManager.findFragmentByTag(navigatorTag) == null) {
-            val fragment = navigatorFactory.createFragmentFactory(initialLocator = null)
-                .instantiate(context.classLoader, EpubNavigatorFragment::class.java.name)
-            fragmentManager.beginTransaction()
-                .replace(fragmentReaderContainer.id, fragment, navigatorTag)
-                .commitNow()
+    )
+
+    DisposableEffect(navigatorTag) {
+        onDispose {
+            val fm = activity.supportFragmentManager
+            fm.findFragmentByTag(navigatorTag)?.let { fragment ->
+                fm.beginTransaction().remove(fragment).commitAllowingStateLoss()
+            }
         }
     }
 }
