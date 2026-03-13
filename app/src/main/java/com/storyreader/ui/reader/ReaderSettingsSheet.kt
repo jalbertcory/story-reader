@@ -8,16 +8,27 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,7 +41,6 @@ import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
 
-// Night-theme sentinel colors applied to EpubPreferences
 private val NIGHT_BG_INT = 0xFF000000.toInt()
 private val NIGHT_TEXT_INT = 0xFFFF7722.toInt()
 
@@ -38,7 +48,6 @@ private val NIGHT_TEXT_INT = 0xFFFF7722.toInt()
 private fun EpubPreferences.isNightTheme() =
     theme == null && backgroundColor?.int == NIGHT_BG_INT
 
-// Preview colors per theme (used for the button UI only)
 private data class ThemePreview(
     val bg: Color,
     val text: Color,
@@ -54,7 +63,13 @@ private val themeNight = ThemePreview(Color.Black, Color(0xFFFF7722), "Night")
 @Composable
 fun ReaderSettingsSheet(
     preferences: EpubPreferences,
+    ttsSettings: TtsSettingsUiState,
     onPreferencesChange: (EpubPreferences) -> Unit,
+    onTtsSpeedChange: (Float) -> Unit,
+    onTtsPitchChange: (Float) -> Unit,
+    onTtsVoiceSelected: (String?) -> Unit,
+    onTtsEngineSelected: (String?) -> Unit,
+    onOpenSystemTtsSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -66,12 +81,12 @@ fun ReaderSettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
 
-            // ── Font Size ────────────────────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -99,11 +114,10 @@ fun ReaderSettingsSheet(
                     value = fontSize,
                     onValueChange = { onPreferencesChange(preferences.copy(fontSize = it.toDouble())) },
                     valueRange = 0.5f..2.0f,
-                    steps = 29  // 0.05× increments
+                    steps = 29
                 )
             }
 
-            // ── Theme ────────────────────────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Theme", style = MaterialTheme.typography.labelLarge)
                 Row(
@@ -155,7 +169,6 @@ fun ReaderSettingsSheet(
                 }
             }
 
-            // ── Font Family ──────────────────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Font", style = MaterialTheme.typography.labelLarge)
                 Row(
@@ -173,11 +186,7 @@ fun ReaderSettingsSheet(
                         composeFontFamily = FontFamily.Serif,
                         selected = preferences.fontFamily?.name == "serif",
                         onClick = {
-                            onPreferencesChange(
-                                preferences.copy(
-                                    fontFamily = org.readium.r2.navigator.preferences.FontFamily("serif")
-                                )
-                            )
+                            onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("serif")))
                         }
                     )
                     FontButton(
@@ -185,11 +194,7 @@ fun ReaderSettingsSheet(
                         composeFontFamily = FontFamily.SansSerif,
                         selected = preferences.fontFamily?.name == "sans-serif",
                         onClick = {
-                            onPreferencesChange(
-                                preferences.copy(
-                                    fontFamily = org.readium.r2.navigator.preferences.FontFamily("sans-serif")
-                                )
-                            )
+                            onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("sans-serif")))
                         }
                     )
                     FontButton(
@@ -197,16 +202,146 @@ fun ReaderSettingsSheet(
                         composeFontFamily = FontFamily.Monospace,
                         selected = preferences.fontFamily?.name == "monospace",
                         onClick = {
-                            onPreferencesChange(
-                                preferences.copy(
-                                    fontFamily = org.readium.r2.navigator.preferences.FontFamily("monospace")
-                                )
-                            )
+                            onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("monospace")))
+                        }
+                    )
+                }
+            }
+
+            Text("Text-to-Speech", style = MaterialTheme.typography.titleMedium)
+
+            SliderSetting(
+                label = "Speed",
+                value = ttsSettings.speed,
+                display = "${String.format("%.2f", ttsSettings.speed)}x",
+                onReset = { onTtsSpeedChange(1f) },
+                onValueChange = onTtsSpeedChange
+            )
+
+            SliderSetting(
+                label = "Pitch",
+                value = ttsSettings.pitch,
+                display = "${String.format("%.2f", ttsSettings.pitch)}x",
+                onReset = { onTtsPitchChange(1f) },
+                onValueChange = onTtsPitchChange
+            )
+
+            SelectionField(
+                label = "Engine",
+                value = ttsSettings.availableEngines
+                    .firstOrNull { it.packageName == ttsSettings.enginePackageName }
+                    ?.label
+                    ?: ttsSettings.availableEngines.firstOrNull { it.isSystemDefault }?.label
+                    ?: "System default",
+                entries = listOf("System default" to null) +
+                    ttsSettings.availableEngines.map { engine ->
+                        val suffix = if (engine.isSystemDefault) " (system default)" else ""
+                        "${engine.label}$suffix" to engine.packageName
+                    },
+                onSelected = onTtsEngineSelected
+            )
+
+            SelectionField(
+                label = "Voice (${ttsSettings.languageLabel})",
+                value = ttsSettings.availableVoices
+                    .firstOrNull { it.id == ttsSettings.selectedVoiceId }
+                    ?.label
+                    ?: if (ttsSettings.isLoadingVoices) "Loading voices..." else "System default",
+                entries = listOf("System default" to null) +
+                    ttsSettings.availableVoices.map { voice -> voice.label to voice.id },
+                enabled = !ttsSettings.isLoadingVoices,
+                onSelected = onTtsVoiceSelected
+            )
+
+            Text(
+                "Choose System default here to let Android handle the active engine voice.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            TextButton(onClick = onOpenSystemTtsSettings) {
+                Text("Open Android TTS settings")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionField(
+    label: String,
+    value: String,
+    entries: List<Pair<String, String?>>,
+    enabled: Boolean = true,
+    onSelected: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { if (enabled) expanded = !expanded }
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = {},
+                readOnly = true,
+                enabled = enabled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                entries.forEach { (title, id) ->
+                    DropdownMenuItem(
+                        text = { Text(title) },
+                        onClick = {
+                            expanded = false
+                            onSelected(id)
                         }
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SliderSetting(
+    label: String,
+    value: Float,
+    display: String,
+    onReset: () -> Unit,
+    onValueChange: (Float) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    display,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = onReset) {
+                    Text("Reset", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0.5f..2.0f,
+            steps = 29
+        )
     }
 }
 
