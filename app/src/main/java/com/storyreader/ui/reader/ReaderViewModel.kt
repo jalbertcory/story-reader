@@ -176,6 +176,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentLocator = MutableStateFlow<Locator?>(null)
     val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
 
+    private val _currentChapter = MutableStateFlow<Link?>(null)
+    val currentChapter: StateFlow<Link?> = _currentChapter.asStateFlow()
+
     private val _showBars = MutableStateFlow(true)
     val showBars: StateFlow<Boolean> = _showBars.asStateFlow()
 
@@ -189,6 +192,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var sessionStartMs: Long = 0L
     private var sessionStartProgression: Float = 0f
     private val pageTurnTimestamps = mutableListOf<Long>()
+    private var lastLocatorHref: String? = null
 
     init {
         refreshTtsCatalog()
@@ -244,6 +248,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             ttsResumeLocator = null
         }
         pageTurnTimestamps.add(System.currentTimeMillis())
+
+        // Resolve chapter only when the base file (ignoring split suffixes) changes
+        val hrefStr = locator.href.toString().substringBefore("#")
+        val normalizedHref = stripSplitSuffix(hrefStr)
+        if (normalizedHref != lastLocatorHref) {
+            lastLocatorHref = normalizedHref
+            resolveCurrentChapter(locator)
+        }
         savePositionJob?.cancel()
         savePositionJob = viewModelScope.launch {
             delay(300)
@@ -300,6 +312,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun navigateToLink(link: Link) {
+        // Store the chapter immediately — we know exactly where we're going
+        _currentChapter.value = link
+        lastLocatorHref = stripSplitSuffix(link.href.toString().substringBefore("#"))
         val nav = navigator ?: return
         val pub = _uiState.value.publication ?: return
         val locator = pub.locatorFromLink(link) ?: return
@@ -307,6 +322,34 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             nav.go(locator)
         }
     }
+
+    /**
+     * Strip `_split_NNN` suffixes that some EPUBs use to break large chapters
+     * into multiple HTML files. E.g. `part0006_split_001.html` → `part0006.html`
+     */
+    private fun stripSplitSuffix(path: String): String =
+        path.replace(Regex("_split_\\d+"), "")
+
+    private fun resolveCurrentChapter(locator: Locator) {
+        val toc = _uiState.value.publication?.tableOfContents ?: return
+        val href = locator.href.toString()
+        val hrefNoFragment = href.substringBefore("#")
+        val hrefNormalized = stripSplitSuffix(hrefNoFragment)
+        val allLinks = flattenTocLinksForChapter(toc)
+        val match = allLinks
+            .filter { link ->
+                val linkHref = link.href.toString().substringBefore("#")
+                val linkNormalized = stripSplitSuffix(linkHref)
+                href.startsWith(linkHref)
+                    || hrefNoFragment.endsWith(linkHref)
+                    || hrefNormalized == linkNormalized
+            }
+            .maxByOrNull { it.href.toString().length }
+        _currentChapter.value = match
+    }
+
+    private fun flattenTocLinksForChapter(links: List<Link>): List<Link> =
+        links.flatMap { link -> listOf(link) + flattenTocLinksForChapter(link.children ?: emptyList()) }
 
     fun updatePreferences(transform: (EpubPreferences) -> EpubPreferences) {
         val updated = transform(_preferences.value)

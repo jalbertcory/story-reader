@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.dao.BookSessionStats
+import com.storyreader.data.db.dao.MonthlyReadingStat
 import com.storyreader.data.db.entity.BookEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,15 +27,20 @@ data class BookStatItem(
 data class GlobalStats(
     val allTimeTotalSeconds: Long,
     val allTimeTotalWords: Long,
-    val ytdTotalSeconds: Long,
-    val ytdTotalWords: Long,
+    val selectedYearTotalSeconds: Long,
+    val selectedYearTotalWords: Long,
     val goalHoursPerYear: Int,
-    val goalWordsPerYear: Int
+    val goalWordsPerYear: Int,
+    val selectedYear: Int,
+    val isCurrentYear: Boolean
 )
 
 data class StatsUiState(
     val bookStats: List<BookStatItem> = emptyList(),
     val globalStats: GlobalStats? = null,
+    val availableYears: List<Int> = emptyList(),
+    val selectedYear: Int = Calendar.getInstance().get(Calendar.YEAR),
+    val monthlyStats: List<MonthlyReadingStat> = emptyList(),
     val isLoading: Boolean = true
 )
 
@@ -51,7 +57,9 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     private val bookRepository = app.bookRepository
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val _uiState = MutableStateFlow(StatsUiState())
+    private val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+
+    private val _uiState = MutableStateFlow(StatsUiState(selectedYear = currentYear))
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
 
     init {
@@ -59,24 +67,27 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadStats() {
-        val yearStartMs = getYearStartMs()
+        viewModelScope.launch {
+            // Load available years once
+            val years = sessionDao.getReadingYears().ifEmpty { listOf(currentYear) }
+            val initialYear = if (currentYear in years) currentYear else years.first()
+            _uiState.value = _uiState.value.copy(availableYears = years, selectedYear = initialYear)
+            loadYearData(initialYear)
+        }
 
+        // Observe reactive per-book and all-time data continuously
         viewModelScope.launch {
             @Suppress("UNCHECKED_CAST")
             combine(
                 bookRepository.observeAll(),
                 sessionDao.getBookSessionStats(),
                 sessionDao.getTotalReadingSeconds(),
-                sessionDao.getTotalWordsRead(),
-                sessionDao.getReadingSecondsSince(yearStartMs),
-                sessionDao.getWordsReadSince(yearStartMs)
+                sessionDao.getTotalWordsRead()
             ) { values ->
                 val books = values[0] as List<BookEntity>
                 val statsPerBook = values[1] as List<BookSessionStats>
                 val totalSecs = values[2] as Long?
                 val totalWords = values[3] as Long?
-                val ytdSecs = values[4] as Long?
-                val ytdWords = values[5] as Long?
 
                 val statsMap = statsPerBook.associateBy { it.bookId }
                 val bookItems = books
@@ -93,20 +104,62 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     .sortedByDescending { it.lastReadMs }
 
-                val global = GlobalStats(
-                    allTimeTotalSeconds = totalSecs ?: 0L,
-                    allTimeTotalWords = totalWords ?: 0L,
-                    ytdTotalSeconds = ytdSecs ?: 0L,
-                    ytdTotalWords = ytdWords ?: 0L,
-                    goalHoursPerYear = prefs.getInt(KEY_GOAL_HOURS, DEFAULT_GOAL_HOURS),
-                    goalWordsPerYear = prefs.getInt(KEY_GOAL_WORDS, DEFAULT_GOAL_WORDS)
+                Triple(bookItems, totalSecs ?: 0L, totalWords ?: 0L)
+            }.collect { (bookItems, totalSecs, totalWords) ->
+                val current = _uiState.value
+                val existingGlobal = current.globalStats
+                _uiState.value = current.copy(
+                    bookStats = bookItems,
+                    globalStats = existingGlobal?.copy(
+                        allTimeTotalSeconds = totalSecs,
+                        allTimeTotalWords = totalWords
+                    ) ?: GlobalStats(
+                        allTimeTotalSeconds = totalSecs,
+                        allTimeTotalWords = totalWords,
+                        selectedYearTotalSeconds = 0L,
+                        selectedYearTotalWords = 0L,
+                        goalHoursPerYear = prefs.getInt(KEY_GOAL_HOURS, DEFAULT_GOAL_HOURS),
+                        goalWordsPerYear = prefs.getInt(KEY_GOAL_WORDS, DEFAULT_GOAL_WORDS),
+                        selectedYear = current.selectedYear,
+                        isCurrentYear = current.selectedYear == currentYear
+                    ),
+                    isLoading = false
                 )
-
-                StatsUiState(bookStats = bookItems, globalStats = global, isLoading = false)
-            }.collect { state ->
-                _uiState.value = state
             }
         }
+    }
+
+    fun selectYear(year: Int) {
+        _uiState.value = _uiState.value.copy(selectedYear = year)
+        viewModelScope.launch { loadYearData(year) }
+    }
+
+    private suspend fun loadYearData(year: Int) {
+        val yearStart = getYearStartMs(year)
+        val yearEnd = getYearEndMs(year)
+        val yearSecs = sessionDao.getReadingSecondsBetween(yearStart, yearEnd) ?: 0L
+        val yearWords = sessionDao.getWordsReadBetween(yearStart, yearEnd) ?: 0L
+        val monthly = sessionDao.getMonthlyStats(yearStart, yearEnd)
+
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            monthlyStats = monthly,
+            globalStats = (current.globalStats ?: GlobalStats(
+                allTimeTotalSeconds = 0L,
+                allTimeTotalWords = 0L,
+                selectedYearTotalSeconds = 0L,
+                selectedYearTotalWords = 0L,
+                goalHoursPerYear = prefs.getInt(KEY_GOAL_HOURS, DEFAULT_GOAL_HOURS),
+                goalWordsPerYear = prefs.getInt(KEY_GOAL_WORDS, DEFAULT_GOAL_WORDS),
+                selectedYear = year,
+                isCurrentYear = year == currentYear
+            )).copy(
+                selectedYearTotalSeconds = yearSecs,
+                selectedYearTotalWords = yearWords,
+                selectedYear = year,
+                isCurrentYear = year == currentYear
+            )
+        )
     }
 
     fun setGoalHours(hours: Int) {
@@ -123,12 +176,16 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    private fun getYearStartMs(): Long {
+    private fun getYearStartMs(year: Int): Long {
         val cal = Calendar.getInstance()
-        cal.set(Calendar.DAY_OF_YEAR, 1)
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
+        cal.set(year, Calendar.JANUARY, 1, 0, 0, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    private fun getYearEndMs(year: Int): Long {
+        val cal = Calendar.getInstance()
+        cal.set(year + 1, Calendar.JANUARY, 1, 0, 0, 0)
         cal.set(Calendar.MILLISECOND, 0)
         return cal.timeInMillis
     }

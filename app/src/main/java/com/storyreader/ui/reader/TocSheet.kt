@@ -30,15 +30,24 @@ private fun flattenToc(toc: List<Link>): List<TocItem> = buildList {
     }
 }
 
+private fun stripSplitSuffix(path: String): String =
+    path.replace(Regex("_split_\\d+"), "")
+
 /** Returns the index of the deepest TOC entry whose href prefix matches the current locator. */
 private fun activeIndex(items: List<TocItem>, locator: Locator?): Int {
     if (locator == null) return -1
     val href = locator.href.toString()
+    val hrefNoFragment = href.substringBefore("#")
+    val hrefNormalized = stripSplitSuffix(hrefNoFragment)
     var bestIndex = -1
     var bestLength = -1
     items.forEachIndexed { i, item ->
         val entryHref = item.link.href.toString().substringBefore("#")
-        if (href.startsWith(entryHref) && entryHref.length > bestLength) {
+        val entryNormalized = stripSplitSuffix(entryHref)
+        val matches = href.startsWith(entryHref)
+            || hrefNoFragment.endsWith(entryHref)
+            || hrefNormalized == entryNormalized
+        if (matches && entryHref.length > bestLength) {
             bestLength = entryHref.length
             bestIndex = i
         }

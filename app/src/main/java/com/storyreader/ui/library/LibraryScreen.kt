@@ -19,15 +19,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -39,6 +41,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +80,7 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showImportMenu by remember { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -96,9 +102,49 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("My Library") },
                 actions = {
-                    if (uiState.hasNextcloudCredentials) {
-                        IconButton(onClick = onNextcloudImportClick) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = "Import from Nextcloud")
+                    // Import button — opens dropdown with all import sources
+                    Box {
+                        IconButton(onClick = { showImportMenu = true }) {
+                            Icon(Icons.Default.CloudDownload, contentDescription = "Import book")
+                        }
+                        DropdownMenu(
+                            expanded = showImportMenu,
+                            onDismissRequest = { showImportMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("From Device") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp))
+                                },
+                                onClick = {
+                                    showImportMenu = false
+                                    filePickerLauncher.launch(arrayOf("application/epub+zip"))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("From Google Drive") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp))
+                                },
+                                onClick = {
+                                    showImportMenu = false
+                                    // Google Drive is accessible through the system file picker
+                                    filePickerLauncher.launch(arrayOf("application/epub+zip"))
+                                }
+                            )
+                            if (uiState.hasNextcloudCredentials) {
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("From Nextcloud") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp))
+                                    },
+                                    onClick = {
+                                        showImportMenu = false
+                                        onNextcloudImportClick()
+                                    }
+                                )
+                            }
                         }
                     }
                     IconButton(onClick = onStatsClick) {
@@ -109,13 +155,6 @@ fun LibraryScreen(
                     }
                 }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { filePickerLauncher.launch(arrayOf("application/epub+zip")) }
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Import from device")
-            }
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -134,10 +173,7 @@ fun LibraryScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (uiState.hasNextcloudCredentials)
-                                "Tap + to import from device, or the cloud icon for Nextcloud"
-                            else
-                                "Tap + to import an EPUB from your device",
+                            text = "Tap the download icon to import an EPUB",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -215,7 +251,8 @@ fun LibraryScreen(
                                             ) {
                                                 LinearProgressIndicator(
                                                     progress = { book.totalProgression },
-                                                    modifier = Modifier.weight(1f)
+                                                    modifier = Modifier.weight(1f),
+                                                    drawStopIndicator = {}
                                                 )
                                                 Text(
                                                     text = "${"%.1f".format(book.totalProgression * 100)}%",

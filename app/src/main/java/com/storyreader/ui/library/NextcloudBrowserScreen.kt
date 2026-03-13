@@ -80,7 +80,8 @@ fun NextcloudBrowserScreen(
                     progress = {
                         uiState.downloadedCount.toFloat() / uiState.totalToDownload.coerceAtLeast(1)
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    drawStopIndicator = {}
                 )
                 Text(
                     text = "Downloaded ${uiState.downloadedCount} / ${uiState.totalToDownload}",
