@@ -126,6 +126,7 @@ fun ReaderScreen(
     val ttsSettings by viewModel.ttsSettings.collectAsState()
     val ttsState by viewModel.ttsState.collectAsState()
     val currentLocator by viewModel.currentLocator.collectAsState()
+    val currentChapter by viewModel.currentChapter.collectAsState()
     val showBars by viewModel.showBars.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
@@ -268,6 +269,7 @@ fun ReaderScreen(
                     ReaderStatusBar(
                         locator = currentLocator,
                         toc = uiState.publication!!.tableOfContents,
+                        currentChapterLink = currentChapter,
                         style = statusBarStyle,
                         contentPadding = PaddingValues(
                             start = bottomChromeInsets.horizontal,
@@ -331,15 +333,15 @@ private fun chapterTitleFromToc(locator: Locator?, toc: List<Link>): String {
         ?: ""
 }
 
-private fun currentChapterStatus(locator: Locator?, toc: List<Link>): ChapterStatus {
-    if (locator == null) return ChapterStatus(label = "", title = "", progress = null)
+private fun currentChapterStatus(locator: Locator?, toc: List<Link>, currentChapterLink: Link?): ChapterStatus {
+    val progress = locator?.locations?.progression?.toFloat()?.coerceIn(0f, 1f)
+    if (currentChapterLink == null) return ChapterStatus(label = "", title = "", progress = progress)
     val allLinks = flattenTocLinks(toc)
-    val match = bestMatchingTocLink(locator, toc)
-    val index = match?.let(allLinks::indexOf)?.takeIf { it >= 0 }?.plus(1)
+    val index = allLinks.indexOf(currentChapterLink).takeIf { it >= 0 }?.plus(1)
     return ChapterStatus(
         label = index?.let { "Ch $it" } ?: "",
-        title = match?.title ?: locator.title.orEmpty(),
-        progress = locator.locations.progression?.toFloat()?.coerceIn(0f, 1f)
+        title = currentChapterLink.title.orEmpty(),
+        progress = progress
     )
 }
 
@@ -411,6 +413,7 @@ private fun TtsControlsBar(
 private fun ReaderStatusBar(
     locator: Locator?,
     toc: List<Link>,
+    currentChapterLink: Link?,
     style: StatusBarStyle,
     contentPadding: PaddingValues = PaddingValues()
 ) {
@@ -430,7 +433,7 @@ private fun ReaderStatusBar(
     val progressText = locator?.locations?.totalProgression?.let {
         "Book ${"%.1f".format(it * 100)}%"
     } ?: ""
-    val chapterStatus = currentChapterStatus(locator, toc)
+    val chapterStatus = currentChapterStatus(locator, toc, currentChapterLink)
     val centerText = listOfNotNull(
         chapterStatus.label.takeIf { it.isNotBlank() },
         chapterStatus.title.takeIf { it.isNotBlank() },

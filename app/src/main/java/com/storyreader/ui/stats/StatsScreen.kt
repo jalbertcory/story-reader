@@ -1,5 +1,6 @@
 package com.storyreader.ui.stats
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,11 +46,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.storyreader.data.db.dao.MonthlyReadingStat
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -85,10 +92,23 @@ fun StatsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Year selector tabs
+            if (uiState.availableYears.size > 1) {
+                item {
+                    YearSelector(
+                        years = uiState.availableYears,
+                        selectedYear = uiState.selectedYear,
+                        onYearSelect = viewModel::selectYear,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
             uiState.globalStats?.let { global ->
                 item {
                     GlobalStatsCard(
                         global = global,
+                        monthlyStats = uiState.monthlyStats,
                         onGoalHoursChange = viewModel::setGoalHours,
                         onGoalWordsChange = viewModel::setGoalWords
                     )
@@ -120,9 +140,94 @@ fun StatsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun YearSelector(
+    years: List<Int>,
+    selectedYear: Int,
+    onYearSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val selectedIndex = years.indexOf(selectedYear).coerceAtLeast(0)
+    SecondaryScrollableTabRow(
+        selectedTabIndex = selectedIndex,
+        modifier = modifier
+    ) {
+        years.forEach { year ->
+            Tab(
+                selected = year == selectedYear,
+                onClick = { onYearSelect(year) },
+                text = { Text(year.toString()) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthlyBarChart(
+    monthlyStats: List<MonthlyReadingStat>,
+    modifier: Modifier = Modifier
+) {
+    val monthlySeconds = (1..12).map { month ->
+        monthlyStats.find { it.month == month }?.totalSeconds ?: 0L
+    }
+    val maxVal = monthlySeconds.maxOrNull()?.takeIf { it > 0 } ?: 1L
+    val monthLabels = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")
+    val barColor = MaterialTheme.colorScheme.primary
+    val emptyBarColor = MaterialTheme.colorScheme.surfaceVariant
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(modifier = modifier) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+        ) {
+            val slotWidth = size.width / 12f
+            val barWidth = slotWidth * 0.6f
+            val gap = slotWidth * 0.2f
+
+            monthlySeconds.forEachIndexed { i, value ->
+                val barHeight = if (value > 0)
+                    (value.toFloat() / maxVal * size.height).coerceAtLeast(3f)
+                else 0f
+                val x = i * slotWidth + gap
+                // Draw empty slot background
+                drawRect(
+                    color = emptyBarColor,
+                    topLeft = Offset(x, 0f),
+                    size = Size(barWidth, size.height)
+                )
+                // Draw filled portion
+                if (barHeight > 0f) {
+                    drawRect(
+                        color = barColor,
+                        topLeft = Offset(x, size.height - barHeight),
+                        size = Size(barWidth, barHeight)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            monthLabels.forEachIndexed { i, label ->
+                val hasData = (monthlySeconds.getOrNull(i) ?: 0L) > 0L
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (hasData) labelColor else labelColor.copy(alpha = 0.4f),
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun GlobalStatsCard(
     global: GlobalStats,
+    monthlyStats: List<MonthlyReadingStat>,
     onGoalHoursChange: (Int) -> Unit,
     onGoalWordsChange: (Int) -> Unit
 ) {
@@ -140,36 +245,54 @@ private fun GlobalStatsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Reading Goals", style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = { showGoalDialog = true }) {
-                    Text("Edit Goals")
+                Text(
+                    "${global.selectedYear}${if (global.isCurrentYear) " — Year to Date" else ""}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (global.isCurrentYear) {
+                    TextButton(onClick = { showGoalDialog = true }) {
+                        Text("Edit Goals")
+                    }
                 }
             }
 
-            val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-            Text(
-                "$currentYear — Year to Date",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-            )
+            // Monthly bar chart
+            if (monthlyStats.isNotEmpty() || !global.isCurrentYear) {
+                MonthlyBarChart(
+                    monthlyStats = monthlyStats,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
 
-            val ytdHours = global.ytdTotalSeconds / 3600f
-            val hoursProgress = (ytdHours / global.goalHoursPerYear).coerceIn(0f, 1f)
-            GoalProgressRow(
-                label = "Hours Read",
-                current = "%.1f h".format(ytdHours),
-                goal = "${global.goalHoursPerYear} h",
-                progress = hoursProgress
-            )
-
-            val ytdWordsK = global.ytdTotalWords / 1000f
-            val wordsProgress = (global.ytdTotalWords.toFloat() / global.goalWordsPerYear).coerceIn(0f, 1f)
-            GoalProgressRow(
-                label = "Words Read (est.)",
-                current = if (global.ytdTotalWords >= 1000) "%.1fK".format(ytdWordsK) else "${global.ytdTotalWords}",
-                goal = formatWords(global.goalWordsPerYear.toLong()),
-                progress = wordsProgress
-            )
+            if (global.isCurrentYear) {
+                val ytdHours = global.selectedYearTotalSeconds / 3600f
+                val hoursProgress = (ytdHours / global.goalHoursPerYear).coerceIn(0f, 1f)
+                GoalProgressRow(
+                    label = "Hours Read",
+                    current = "%.1f h".format(ytdHours),
+                    goal = "${global.goalHoursPerYear} h",
+                    progress = hoursProgress
+                )
+                val wordsProgress = (global.selectedYearTotalWords.toFloat() / global.goalWordsPerYear).coerceIn(0f, 1f)
+                GoalProgressRow(
+                    label = "Words Read",
+                    current = formatWords(global.selectedYearTotalWords),
+                    goal = formatWords(global.goalWordsPerYear.toLong()),
+                    progress = wordsProgress
+                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    StatChip(
+                        value = formatHours(global.selectedYearTotalSeconds),
+                        label = "Hours Read"
+                    )
+                    StatChip(
+                        value = formatWords(global.selectedYearTotalWords),
+                        label = "Words Read"
+                    )
+                }
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -185,7 +308,7 @@ private fun GlobalStatsCard(
                 )
                 StatChip(
                     value = formatWords(global.allTimeTotalWords),
-                    label = "Words Read (est.)"
+                    label = "Words Read"
                 )
             }
         }
@@ -224,7 +347,8 @@ private fun GoalProgressRow(label: String, current: String, goal: String, progre
         }
         LinearProgressIndicator(
             progress = { progress },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            drawStopIndicator = {}
         )
     }
 }
@@ -290,7 +414,7 @@ private fun BookStatCard(item: BookStatItem) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     LabelValue("Time read", formatHours(item.totalReadingSeconds.toLong()))
-                    LabelValue("Words (est.)", formatWords(item.totalWordsRead.toLong()))
+                    LabelValue("Words", formatWords(item.totalWordsRead.toLong()))
                     if (wpm > 0) LabelValue("WPM", "$wpm")
                 }
                 if (item.book.totalProgression > 0f) {
@@ -301,7 +425,8 @@ private fun BookStatCard(item: BookStatItem) {
                     ) {
                         LinearProgressIndicator(
                             progress = { item.book.totalProgression },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            drawStopIndicator = {}
                         )
                         Text(
                             "${"%.1f".format(item.book.totalProgression * 100)}%",

@@ -9,6 +9,12 @@ import kotlinx.coroutines.flow.Flow
 
 data class BookLastRead(val bookId: String, val lastReadAt: Long)
 
+data class MonthlyReadingStat(
+    val month: Int,
+    val totalSeconds: Long,
+    val totalWords: Long
+)
+
 data class BookSessionStats(
     val bookId: String,
     val firstSessionStart: Long,
@@ -61,6 +67,30 @@ interface ReadingSessionDao {
 
     @Query("SELECT COUNT(DISTINCT bookId) FROM reading_sessions WHERE startTime >= :fromMs")
     fun getBooksStartedSince(fromMs: Long): Flow<Int>
+
+    @Query("""
+        SELECT CAST(strftime('%m', startTime/1000, 'unixepoch') AS INTEGER) as month,
+               SUM(durationSeconds) as totalSeconds,
+               SUM(wordsRead) as totalWords
+        FROM reading_sessions
+        WHERE startTime >= :yearStartMs AND startTime < :yearEndMs
+        GROUP BY month
+        ORDER BY month
+    """)
+    suspend fun getMonthlyStats(yearStartMs: Long, yearEndMs: Long): List<MonthlyReadingStat>
+
+    @Query("""
+        SELECT DISTINCT CAST(strftime('%Y', startTime/1000, 'unixepoch') AS INTEGER) as year
+        FROM reading_sessions
+        ORDER BY year DESC
+    """)
+    suspend fun getReadingYears(): List<Int>
+
+    @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE startTime >= :fromMs AND startTime < :toMs")
+    suspend fun getReadingSecondsBetween(fromMs: Long, toMs: Long): Long?
+
+    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE startTime >= :fromMs AND startTime < :toMs")
+    suspend fun getWordsReadBetween(fromMs: Long, toMs: Long): Long?
 
     @Insert
     suspend fun insert(session: ReadingSessionEntity): Long
