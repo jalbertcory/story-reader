@@ -19,9 +19,14 @@ class TtsManager(private val application: Application) {
     private var ttsNavigator: TtsNavigator<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? = null
     private var factory: TtsNavigatorFactory<AndroidTtsSettings, AndroidTtsPreferences, *, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? = null
 
-    fun initialize(publication: Publication): Boolean {
+    fun initialize(publication: Publication, enginePackageName: String?): Boolean {
         return try {
-            val engineProvider = AndroidTtsEngineProvider(application)
+            val engineProvider =
+                if (enginePackageName.isNullOrBlank()) {
+                    AndroidTtsEngineProvider(application)
+                } else {
+                    StoryReaderAndroidTtsEngineProvider(application, enginePackageName)
+                }
             factory = TtsNavigatorFactory(
                 application = application,
                 publication = publication,
@@ -38,14 +43,18 @@ class TtsManager(private val application: Application) {
         }
     }
 
-    suspend fun start(initialLocator: Locator?): TtsNavigator<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? {
+    suspend fun start(
+        initialLocator: Locator?,
+        preferences: AndroidTtsPreferences
+    ): TtsNavigator<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? {
         val nav = factory?.createNavigator(
             listener = object : TtsNavigator.Listener {
                 override fun onStopRequested() {
                     stop()
                 }
             },
-            initialLocator = initialLocator
+            initialLocator = initialLocator,
+            initialPreferences = preferences
         )?.getOrNull() ?: return null
         ttsNavigator = nav
         return nav
