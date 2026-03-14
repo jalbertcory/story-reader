@@ -91,6 +91,7 @@ dependencies {
     // WebDAV
     implementation(libs.dav4jvm)
     implementation(libs.okhttp)
+    implementation(libs.play.services.auth)
 
     // WorkManager
     implementation(libs.workmanager)

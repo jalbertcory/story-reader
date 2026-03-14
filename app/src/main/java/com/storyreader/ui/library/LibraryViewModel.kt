@@ -20,8 +20,7 @@ data class LibraryUiState(
     val lastReadTimes: Map<String, Long> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null,
-    val hasNextcloudCredentials: Boolean = false,
-    val hasGoogleDriveEnabled: Boolean = true  // Google Drive accessible via system file picker
+    val hasNextcloudCredentials: Boolean = false
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {

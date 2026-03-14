@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.storyreader.ui.library.GoogleDriveBrowserScreen
 import com.storyreader.ui.library.LibraryScreen
 import com.storyreader.ui.library.NextcloudBrowserScreen
 import com.storyreader.ui.reader.ReaderScreen
@@ -27,6 +28,9 @@ fun StoryReaderNavHost() {
                 },
                 onNextcloudImportClick = {
                     navController.navigate(Screen.NextcloudBrowser.route)
+                },
+                onGoogleDriveImportClick = {
+                    navController.navigate(Screen.GoogleDriveBrowser.route)
                 },
                 onStatsClick = {
                     navController.navigate(Screen.Stats.route)
@@ -50,6 +54,11 @@ fun StoryReaderNavHost() {
         }
         composable(Screen.NextcloudBrowser.route) {
             NextcloudBrowserScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.GoogleDriveBrowser.route) {
+            GoogleDriveBrowserScreen(
                 onBack = { navController.popBackStack() }
             )
         }
