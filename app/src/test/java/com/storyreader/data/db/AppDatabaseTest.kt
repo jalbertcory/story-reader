@@ -167,4 +167,28 @@ class AppDatabaseTest {
         assertEquals(2, sessions.size)
         assert(sessions.all { it.bookId == "bA" })
     }
+
+    @Test
+    fun `most recently read visible book prefers latest session`() = runTest {
+        db.bookDao().insert(BookEntity(bookId = "older", title = "Older", author = "A"))
+        db.bookDao().insert(BookEntity(bookId = "newer", title = "Newer", author = "A"))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "older", startTime = 1000L))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "newer", startTime = 2000L))
+
+        val bookId = db.readingSessionDao().getMostRecentlyReadVisibleBookId()
+
+        assertEquals("newer", bookId)
+    }
+
+    @Test
+    fun `most recently read visible book skips hidden books`() = runTest {
+        db.bookDao().insert(BookEntity(bookId = "hidden", title = "Hidden", author = "A", hidden = true))
+        db.bookDao().insert(BookEntity(bookId = "visible", title = "Visible", author = "A"))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "hidden", startTime = 3000L))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "visible", startTime = 2000L))
+
+        val bookId = db.readingSessionDao().getMostRecentlyReadVisibleBookId()
+
+        assertEquals("visible", bookId)
+    }
 }
