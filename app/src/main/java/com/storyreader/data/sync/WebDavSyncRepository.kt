@@ -47,6 +47,12 @@ class WebDavSyncRepository(
         return "$server/remote.php/dav/files/$user/EreaderSync/sync_data.json"
     }
 
+    private fun buildSyncFolderUrl(): String {
+        val server = credentialsManager.serverUrl?.trimEnd('/') ?: ""
+        val user = credentialsManager.username ?: ""
+        return "$server/remote.php/dav/files/$user/EreaderSync/"
+    }
+
     fun buildUserRootUrl(): String {
         val server = credentialsManager.serverUrl?.trimEnd('/') ?: ""
         val user = credentialsManager.username ?: ""
@@ -266,6 +272,7 @@ class WebDavSyncRepository(
 
     private fun uploadJson(json: JSONObject) {
         val client = createClient()
+        ensureSyncFolderExists(client)
         val url = buildSyncUrl().toHttpUrl()
         val body = json.toString().toRequestBody("application/json".toMediaType())
         val davCollection = DavCollection(client, url)
@@ -273,6 +280,20 @@ class WebDavSyncRepository(
             if (!response.isSuccessful) {
                 throw Exception("Upload failed: ${response.code}")
             }
+        }
+    }
+
+    private fun ensureSyncFolderExists(client: OkHttpClient) {
+        val request = Request.Builder()
+            .url(buildSyncFolderUrl())
+            .method("MKCOL", null)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful || response.code == 405) {
+                return
+            }
+            throw Exception("Failed to create sync folder: ${response.code}")
         }
     }
 
