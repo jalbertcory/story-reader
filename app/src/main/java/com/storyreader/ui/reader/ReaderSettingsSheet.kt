@@ -7,14 +7,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
+import androidx.compose.material.icons.filled.FormatAlignCenter
+import androidx.compose.material.icons.filled.FormatAlignJustify
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,6 +49,7 @@ import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
+import org.readium.r2.navigator.preferences.TextAlign as ReadiumTextAlign
 
 private val NIGHT_BG_INT = 0xFF000000.toInt()
 private val NIGHT_TEXT_INT = 0xFFFF7722.toInt()
@@ -199,6 +208,39 @@ fun ReaderSettingsSheet(
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("monospace")))
                         }
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Text Alignment", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AlignButton(
+                        icon = Icons.AutoMirrored.Filled.FormatAlignLeft,
+                        contentDescription = "Left",
+                        selected = preferences.textAlign == ReadiumTextAlign.LEFT || preferences.textAlign == null,
+                        onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.LEFT, publisherStyles = false)) }
+                    )
+                    AlignButton(
+                        icon = Icons.Default.FormatAlignCenter,
+                        contentDescription = "Start",
+                        selected = preferences.textAlign == ReadiumTextAlign.START,
+                        onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.START, publisherStyles = false)) }
+                    )
+                    AlignButton(
+                        icon = Icons.AutoMirrored.Filled.FormatAlignRight,
+                        contentDescription = "Right",
+                        selected = preferences.textAlign == ReadiumTextAlign.RIGHT,
+                        onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.RIGHT, publisherStyles = false)) }
+                    )
+                    AlignButton(
+                        icon = Icons.Default.FormatAlignJustify,
+                        contentDescription = "Justify",
+                        selected = preferences.textAlign == ReadiumTextAlign.JUSTIFY,
+                        onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.JUSTIFY, publisherStyles = false)) }
                     )
                 }
             }
@@ -405,6 +447,40 @@ private fun ThemeButton(
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
                 maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlignButton(
+    icon: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .width(72.dp)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(8.dp)
+            ),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(20.dp),
+                tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             )
         }
     }

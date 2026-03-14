@@ -92,7 +92,7 @@ private data class StatusBarStyle(val bg: Color, val text: Color)
 private data class ReaderChromeInsets(val horizontal: Dp, val bottom: Dp)
 private data class ChapterStatus(val label: String, val title: String, val progress: Float?)
 
-private val ReaderBottomBarReservedHeight = 12.dp
+private val ReaderBottomBarReservedHeight = 25.dp
 
 @OptIn(ExperimentalReadiumApi::class)
 private fun statusBarStyleFor(preferences: EpubPreferences?): StatusBarStyle = when {
@@ -134,6 +134,9 @@ fun ReaderScreen(
 
     LaunchedEffect(bookId) { viewModel.openBook(bookId) }
     DisposableEffect(Unit) { onDispose { viewModel.finalizeSession() } }
+    LaunchedEffect(preferences) {
+        viewModel.applyTextLayoutWorkaround()
+    }
 
     // Always hide system bars in the reader. The reading window must never change size
     // due to system bar show/hide, so we keep them permanently hidden.
@@ -163,7 +166,7 @@ fun ReaderScreen(
         // content using a Box layout so the WebView always occupies the full screen.
         // This also means system bars are permanently hidden in this screen to avoid
         // any inset-driven layout changes. See ReaderViewModel.onNavigatorReady for TTS tap handling.
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().background(statusBarStyle.bg)) {
 
             // ── Reading content (always full-screen) ─────────────────────────────
             when {
@@ -542,8 +545,24 @@ private fun EpubReaderContent(
     val initialLocator = remember(initialLocatorJson) {
         initialLocatorJson?.let { Locator.fromJSON(org.json.JSONObject(it)) }
     }
+    val initialPreferences = viewModel.preferences.value
+    val paginationListener = remember(viewModel) {
+        object : EpubNavigatorFragment.PaginationListener {
+            override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
+                viewModel.onReaderPageLoaded()
+            }
+
+            override fun onPageLoaded() {
+                viewModel.onReaderPageLoaded()
+            }
+        }
+    }
     val fragmentFactory = remember(publication, initialLocator) {
-        EpubNavigatorFactory(publication).createFragmentFactory(initialLocator = initialLocator)
+        EpubNavigatorFactory(publication).createFragmentFactory(
+            initialLocator = initialLocator,
+            initialPreferences = initialPreferences,
+            paginationListener = paginationListener
+        )
     }
 
     AndroidView(
