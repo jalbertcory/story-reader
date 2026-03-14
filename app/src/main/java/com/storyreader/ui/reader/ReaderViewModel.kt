@@ -477,7 +477,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             val startLocator = ttsResumeLocator
                 ?: (navigator as? VisualNavigator)?.firstVisibleElementLocator()
                 ?: _currentLocator.value
-            val nav = ttsManager.start(startLocator, _ttsPreferences.value) ?: return@launch
+            val nav = ttsManager.start(startLocator, _ttsPreferences.value)
+            if (nav == null) {
+                startManualSession(bookId)
+                return@launch
+            }
             ttsNavigator = nav
 
             val binder = TtsMediaService.bind(getApplication())
@@ -492,12 +496,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     ttsResumeLocator = location.tokenLocator ?: location.utteranceLocator
                     // Track TTS progression for stats and persist position
                     val utteranceLoc = location.utteranceLocator
-                    if (utteranceLoc != null) {
-                        _currentLocator.value = utteranceLoc
-                        pageTurnTimestamps.add(System.currentTimeMillis())
-                        // Persist position during TTS so it survives app kill
-                        saveTtsPosition(bookId, utteranceLoc)
-                    }
+                    _currentLocator.value = utteranceLoc
+                    pageTurnTimestamps.add(System.currentTimeMillis())
+                    // Persist position during TTS so it survives app kill
+                    saveTtsPosition(bookId, utteranceLoc)
                 }
             }
 
@@ -532,6 +534,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun stopTts() {
+        stopTts(restartManualSession = true)
+    }
+
+    private fun stopTts(restartManualSession: Boolean) {
         ttsJob?.cancel()
         ttsJob = null
         ttsHighlightSynchronizer.stopSync()
@@ -550,19 +556,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         // Finalize TTS session and start a new manual session
         finalizeCurrentSession()
         val bookId = currentBookId ?: return
-        viewModelScope.launch {
-            currentSessionId = readingRepository.startSession(bookId)
-            sessionStartMs = System.currentTimeMillis()
-            currentSessionIsTts = false
-            pageTurnTimestamps.clear()
-            sessionStartProgression = _currentLocator.value?.locations?.totalProgression?.toFloat() ?: sessionStartProgression
+        if (restartManualSession) {
+            viewModelScope.launch {
+                startManualSession(bookId)
+            }
         }
     }
 
     fun ttsSkipPrevious() {
         val nav = navigator as? OverflowableNavigator ?: return
         viewModelScope.launch {
-            stopTts()
+            stopTts(restartManualSession = false)
             ttsResumeLocator = null
             nav.goBackward()
             delay(200)
@@ -573,7 +577,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun ttsSkipNext() {
         val nav = navigator as? OverflowableNavigator ?: return
         viewModelScope.launch {
-            stopTts()
+            stopTts(restartManualSession = false)
             ttsResumeLocator = null
             nav.goForward()
             delay(200)
@@ -628,6 +632,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 bookWordCount = wordCount
             )
         }
+    }
+
+    private suspend fun startManualSession(bookId: String) {
+        currentSessionId = readingRepository.startSession(bookId)
+        sessionStartMs = System.currentTimeMillis()
+        currentSessionIsTts = false
+        pageTurnTimestamps.clear()
+        sessionStartProgression =
+            _currentLocator.value?.locations?.totalProgression?.toFloat() ?: sessionStartProgression
     }
 
     fun finalizeSession() {
