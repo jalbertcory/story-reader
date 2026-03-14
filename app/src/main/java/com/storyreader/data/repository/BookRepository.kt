@@ -15,9 +15,12 @@ import java.util.UUID
 
 interface BookRepository {
     fun observeAll(): Flow<List<BookEntity>>
+    fun observeAllIncludingHidden(): Flow<List<BookEntity>>
     fun observeById(bookId: String): Flow<BookEntity?>
     suspend fun insert(book: BookEntity)
     suspend fun delete(book: BookEntity)
+    suspend fun hideBook(bookId: String)
+    suspend fun unhideBook(bookId: String)
     suspend fun updateProgression(bookId: String, progression: Float)
     suspend fun importFromUri(uri: Uri): Result<BookEntity>
     suspend fun getWordCount(bookId: String): Int
@@ -31,11 +34,17 @@ class BookRepositoryImpl(
 
     override fun observeAll(): Flow<List<BookEntity>> = bookDao.getAll()
 
+    override fun observeAllIncludingHidden(): Flow<List<BookEntity>> = bookDao.getAllIncludingHidden()
+
     override fun observeById(bookId: String): Flow<BookEntity?> = bookDao.getById(bookId)
 
     override suspend fun insert(book: BookEntity) = bookDao.insert(book)
 
     override suspend fun delete(book: BookEntity) = bookDao.delete(book)
+
+    override suspend fun hideBook(bookId: String) = bookDao.setHidden(bookId, true)
+
+    override suspend fun unhideBook(bookId: String) = bookDao.setHidden(bookId, false)
 
     override suspend fun updateProgression(bookId: String, progression: Float) =
         bookDao.updateProgression(bookId, progression)

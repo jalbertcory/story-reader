@@ -21,12 +21,17 @@ data class BookStatItem(
     val lastReadMs: Long,
     val totalReadingSeconds: Int,
     val totalWordsRead: Int,
-    val sessionCount: Int
+    val sessionCount: Int,
+    val manualDurationSeconds: Int,
+    val manualWordsRead: Int,
+    val ttsDurationSeconds: Int,
+    val ttsWordsRead: Int
 )
 
 data class GlobalStats(
     val allTimeTotalSeconds: Long,
     val allTimeTotalWords: Long,
+    val allTimeManualWpm: Int,
     val selectedYearTotalSeconds: Long,
     val selectedYearTotalWords: Long,
     val goalHoursPerYear: Int,
@@ -76,10 +81,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Observe reactive per-book and all-time data continuously
+        // Use observeAllIncludingHidden so hidden books still show in stats
         viewModelScope.launch {
             @Suppress("UNCHECKED_CAST")
             combine(
-                bookRepository.observeAll(),
+                bookRepository.observeAllIncludingHidden(),
                 sessionDao.getBookSessionStats(),
                 sessionDao.getTotalReadingSeconds(),
                 sessionDao.getTotalWordsRead()
@@ -99,23 +105,36 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                             lastReadMs = s.lastSessionStart,
                             totalReadingSeconds = s.totalDurationSeconds,
                             totalWordsRead = s.totalWordsRead,
-                            sessionCount = s.sessionCount
+                            sessionCount = s.sessionCount,
+                            manualDurationSeconds = s.manualDurationSeconds,
+                            manualWordsRead = s.manualWordsRead,
+                            ttsDurationSeconds = s.ttsDurationSeconds,
+                            ttsWordsRead = s.ttsWordsRead
                         )
                     }
                     .sortedByDescending { it.lastReadMs }
 
-                Triple(bookItems, totalSecs ?: 0L, totalWords ?: 0L)
-            }.collect { (bookItems, totalSecs, totalWords) ->
+                val totalManualSecs = bookItems.sumOf { it.manualDurationSeconds }
+                val totalManualWords = bookItems.sumOf { it.manualWordsRead }
+                val manualWpm = if (totalManualSecs > 60)
+                    (totalManualWords.toFloat() / (totalManualSecs / 60f)).toInt()
+                else 0
+
+                Triple(bookItems, totalSecs ?: 0L, totalWords ?: 0L) to manualWpm
+            }.collect { (triple, manualWpm) ->
+                val (bookItems, totalSecs, totalWords) = triple
                 val current = _uiState.value
                 val existingGlobal = current.globalStats
                 _uiState.value = current.copy(
                     bookStats = bookItems,
                     globalStats = existingGlobal?.copy(
                         allTimeTotalSeconds = totalSecs,
-                        allTimeTotalWords = totalWords
+                        allTimeTotalWords = totalWords,
+                        allTimeManualWpm = manualWpm
                     ) ?: GlobalStats(
                         allTimeTotalSeconds = totalSecs,
                         allTimeTotalWords = totalWords,
+                        allTimeManualWpm = manualWpm,
                         selectedYearTotalSeconds = 0L,
                         selectedYearTotalWords = 0L,
                         goalHoursPerYear = prefs.getInt(KEY_GOAL_HOURS, DEFAULT_GOAL_HOURS),
@@ -147,6 +166,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             globalStats = (current.globalStats ?: GlobalStats(
                 allTimeTotalSeconds = 0L,
                 allTimeTotalWords = 0L,
+                allTimeManualWpm = 0,
                 selectedYearTotalSeconds = 0L,
                 selectedYearTotalWords = 0L,
                 goalHoursPerYear = prefs.getInt(KEY_GOAL_HOURS, DEFAULT_GOAL_HOURS),

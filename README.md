@@ -1,16 +1,41 @@
 # Story Reader
 
-An Android e-reader for EPUB books with text-to-speech and Nextcloud sync.
+A full-featured Android e-reader for EPUB books with text-to-speech, reading statistics, Android Auto support, and Nextcloud sync.
 
 ## Features
 
+### Reading
 - EPUB parsing and rendering via [Readium Kotlin Toolkit](https://readium.org)
-- Local library management with reading progress tracking
-- Text-to-speech with synchronized word highlighting
+- Customizable reading preferences — font size, font family, and themes (Default, Dark, Sepia, Night)
+- Full-screen reading with tap-to-toggle chrome and automatic fullscreen on page turn
+- Table of contents navigation with chapter tracking in the status bar
+- Persistent reading position — picks up exactly where you left off
+
+### Text-to-Speech
+- TTS playback with real-time word highlighting synced to the current page
+- Page automatically turns when the highlight crosses a page boundary
+- Configurable speed (default 1.5x), pitch, engine, and voice selection
+- Media notification controls (play, pause, skip) — works with Bluetooth headphones and watches
+- Android Auto integration — browse your library and start TTS playback from your car
+
+### Library Management
+- Import EPUBs from device storage, Google Drive, or Nextcloud
+- Cover art extraction and display
+- Long-press any book for detailed stats, session history, metadata, and the option to remove it from the library (reading stats are preserved)
+
+### Reading Statistics
+- Automatic session tracking with idle detection (discards inactive time)
+- Separate tracking for manual reading and TTS listening
+- Per-book stats: time read (manual + TTS), words read, manual WPM, session count, progress
+- Global stats: all-time hours, words, and manual WPM
+- Yearly goals with progress bars (hours and words)
+- Monthly bar chart breakdown
+- Year-over-year comparison
+
+### Sync
 - Cross-device reading progress sync via Nextcloud WebDAV
-- Customizable reading preferences (font size, theme, font family)
-- Reading statistics and session tracking
-- Secure credential storage using Android Keystore (AES-256-GCM)
+- Automatic background sync on Wi-Fi (hourly via WorkManager)
+- Credentials encrypted with AES-256-GCM via Android Keystore
 
 ## Requirements
 
@@ -39,7 +64,7 @@ An Android e-reader for EPUB books with text-to-speech and Nextcloud sync.
 ### 3. Run the app
 
 1. In the toolbar, select your new emulator from the device dropdown (it will show the AVD name, e.g. `Pixel 8 API 35`).
-2. Click the green **Run** button (▶), or press **Ctrl+R** (macOS: **⌃R**).
+2. Click the green **Run** button, or press **Ctrl+R** (macOS: **Cmd+R**).
 3. Android Studio will build the app, start the emulator, and install the APK automatically.
 
 ### Command line (alternative)
@@ -83,14 +108,16 @@ GitHub Actions runs lint, unit tests, and a debug build on every push and pull r
 - **UI:** Jetpack Compose with Material 3
 - **Navigation:** Jetpack Navigation Compose
 - **State:** MVVM with `StateFlow`-backed ViewModels
-- **Database:** Room (SQLite)
-- **EPUB rendering:** Readium 3 (`EpubNavigatorFragment` embedded in Compose via `AndroidViewBinding`)
+- **Database:** Room (SQLite) with versioned migrations
+- **EPUB rendering:** Readium 3 (`EpubNavigatorFragment` embedded in Compose)
+- **TTS:** Readium TTS Navigator with Media3 `MediaLibraryService`
 - **Sync:** WorkManager + dav4jvm (WebDAV)
 - **Security:** Android Keystore for credential encryption
+- **Image loading:** Coil
 
 ## Nextcloud sync setup
 
-1. Open the app and navigate to **Sync Settings** from the library screen.
+1. Open the app and navigate to **Settings** from the library screen.
 2. Enter your Nextcloud server URL, username, and an [app password](https://docs.nextcloud.com/server/latest/user_manual/en/session_management.html#managing-devices).
 3. Reading progress is synced automatically in the background when on Wi-Fi.
 

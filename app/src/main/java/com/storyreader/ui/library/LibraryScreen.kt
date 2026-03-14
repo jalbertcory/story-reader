@@ -3,7 +3,8 @@ package com.storyreader.ui.library
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.storyreader.data.db.entity.BookEntity
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -70,7 +72,7 @@ private fun formatLastRead(timestampMs: Long): String {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     onBookClick: (String) -> Unit,
@@ -81,6 +83,7 @@ fun LibraryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showImportMenu by remember { mutableStateOf(false) }
+    var selectedBookForDetail by remember { mutableStateOf<BookEntity?>(null) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -189,7 +192,10 @@ fun LibraryScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onBookClick(book.bookId) }
+                                    .combinedClickable(
+                                        onClick = { onBookClick(book.bookId) },
+                                        onLongClick = { selectedBookForDetail = book }
+                                    )
                             ) {
                                 Row(modifier = Modifier.padding(12.dp)) {
                                     // Cover thumbnail
@@ -277,5 +283,13 @@ fun LibraryScreen(
                 )
             }
         }
+    }
+
+    selectedBookForDetail?.let { book ->
+        BookDetailSheet(
+            book = book,
+            viewModel = viewModel,
+            onDismiss = { selectedBookForDetail = null }
+        )
     }
 }
