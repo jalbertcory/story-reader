@@ -15,12 +15,27 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
+enum class BookImportSource(
+    val label: String,
+    val requiresCloudDivider: Boolean = false
+) {
+    DEVICE("From Device"),
+    GOOGLE_DRIVE("From Google Drive"),
+    OPDS("From OPDS Catalog"),
+    NEXTCLOUD("From Nextcloud", requiresCloudDivider = true)
+}
+
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
     val lastReadTimes: Map<String, Long> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null,
-    val hasNextcloudCredentials: Boolean = false
+    val hasNextcloudCredentials: Boolean = false,
+    val importSources: List<BookImportSource> = listOf(
+        BookImportSource.DEVICE,
+        BookImportSource.GOOGLE_DRIVE,
+        BookImportSource.OPDS
+    )
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -43,7 +58,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     books = books,
                     lastReadTimes = lastReadMap,
                     isLoading = false,
-                    hasNextcloudCredentials = app.credentialsManager.hasCredentials
+                    hasNextcloudCredentials = app.credentialsManager.hasCredentials,
+                    importSources = buildImportSources(app.credentialsManager.hasCredentials)
                 )
             }.collect { state ->
                 _uiState.value = state
@@ -53,7 +69,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshCredentials() {
         _uiState.value = _uiState.value.copy(
-            hasNextcloudCredentials = app.credentialsManager.hasCredentials
+            hasNextcloudCredentials = app.credentialsManager.hasCredentials,
+            importSources = buildImportSources(app.credentialsManager.hasCredentials)
         )
     }
 
@@ -79,4 +96,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun getSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =
         sessionDao.getSessionsForBook(bookId)
+
+    private fun buildImportSources(hasNextcloudCredentials: Boolean): List<BookImportSource> {
+        return buildList {
+            add(BookImportSource.DEVICE)
+            add(BookImportSource.GOOGLE_DRIVE)
+            add(BookImportSource.OPDS)
+            if (hasNextcloudCredentials) {
+                add(BookImportSource.NEXTCLOUD)
+            }
+        }
+    }
 }

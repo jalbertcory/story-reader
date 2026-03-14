@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.storyreader.data.catalog.OpdsCatalogRepository
+import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.db.AppDatabase
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.BookRepositoryImpl
@@ -50,6 +52,10 @@ class StoryReaderApplication : Application() {
         SyncSettingsStore.create(this)
     }
 
+    val opdsCredentialsManager: OpdsCredentialsManager by lazy {
+        OpdsCredentialsManager.create(this)
+    }
+
     val googleDriveAuthManager: GoogleDriveAuthManager by lazy {
         GoogleDriveAuthManager(this, googleDriveCredentialsManager)
     }
@@ -60,6 +66,10 @@ class StoryReaderApplication : Application() {
 
     val googleDriveApi: GoogleDriveApi by lazy {
         GoogleDriveApi()
+    }
+
+    val opdsCatalogRepository: OpdsCatalogRepository by lazy {
+        OpdsCatalogRepository()
     }
 
     val googleDriveSyncRepository: GoogleDriveSyncRepository by lazy {
