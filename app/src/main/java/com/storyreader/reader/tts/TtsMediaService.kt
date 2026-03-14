@@ -10,10 +10,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -132,6 +134,7 @@ class TtsMediaService : MediaLibraryService() {
             return future
         }
 
+        @OptIn(UnstableApi::class)
         override fun onSetMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -289,6 +292,7 @@ class TtsMediaService : MediaLibraryService() {
  * Minimal player implementation for session initialization before TTS is started.
  * Allows the MediaLibrarySession to exist for browse-only scenarios.
  */
+@OptIn(UnstableApi::class)
 private class StubPlayer(looper: Looper) : SimpleBasePlayer(looper) {
     override fun getState(): State = State.Builder()
         .setAvailableCommands(Player.Commands.EMPTY)
