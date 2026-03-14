@@ -43,6 +43,7 @@ import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.FontFamily
+import org.readium.r2.navigator.preferences.TextAlign
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -79,6 +80,7 @@ private const val KEY_THEME = "theme"
 private const val KEY_FONT_FAMILY = "font_family"
 private const val KEY_IS_NIGHT = "is_night_theme"
 private const val KEY_SCROLL = "scroll_mode"
+private const val KEY_TEXT_ALIGN = "text_align"
 private const val KEY_TTS_PREFS = "tts_prefs_json"
 private const val KEY_TTS_ENGINE = "tts_engine"
 private const val DEFAULT_TTS_SPEED = 1.5
@@ -125,6 +127,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             ?.let { FontFamily(it) }
         val isNight = prefStore.getBoolean(KEY_IS_NIGHT, false)
         val scroll = if (prefStore.contains(KEY_SCROLL)) prefStore.getBoolean(KEY_SCROLL, false) else null
+        val textAlign = when (prefStore.getString(KEY_TEXT_ALIGN, null)) {
+            "START" -> TextAlign.START
+            "LEFT" -> TextAlign.LEFT
+            "RIGHT" -> TextAlign.RIGHT
+            "JUSTIFY" -> TextAlign.JUSTIFY
+            else -> null
+        }
         return if (isNight) {
             EpubPreferences(
                 fontSize = fontSize,
@@ -133,10 +142,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 backgroundColor = org.readium.r2.navigator.preferences.Color(0xFF000000.toInt()),
                 textColor = org.readium.r2.navigator.preferences.Color(0xFFFF7722.toInt()),
                 publisherStyles = false,
-                scroll = scroll
+                scroll = scroll,
+                textAlign = textAlign
             )
         } else {
-            EpubPreferences(fontSize = fontSize, theme = theme, fontFamily = fontFamily, scroll = scroll)
+            EpubPreferences(
+                fontSize = fontSize,
+                theme = theme,
+                fontFamily = fontFamily,
+                scroll = scroll,
+                textAlign = textAlign,
+                publisherStyles = if (textAlign != null) false else null
+            )
         }
     }
 
@@ -161,6 +178,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             putBoolean(KEY_IS_NIGHT, isNight)
             if (prefs.scroll != null) putBoolean(KEY_SCROLL, prefs.scroll!!)
             else remove(KEY_SCROLL)
+            when (prefs.textAlign) {
+                null -> remove(KEY_TEXT_ALIGN)
+                TextAlign.START -> putString(KEY_TEXT_ALIGN, "START")
+                TextAlign.LEFT -> putString(KEY_TEXT_ALIGN, "LEFT")
+                TextAlign.RIGHT -> putString(KEY_TEXT_ALIGN, "RIGHT")
+                TextAlign.JUSTIFY -> putString(KEY_TEXT_ALIGN, "JUSTIFY")
+                else -> remove(KEY_TEXT_ALIGN)
+            }
         }.apply()
         app.isDarkReadingTheme.value = prefs.theme == Theme.DARK || isNight
     }
@@ -367,9 +392,55 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         links.flatMap { link -> listOf(link) + flattenTocLinksForChapter(link.children ?: emptyList()) }
 
     fun updatePreferences(transform: (EpubPreferences) -> EpubPreferences) {
-        val updated = transform(_preferences.value)
+        val updated = normalizePreferences(transform(_preferences.value))
         _preferences.value = updated
         savePreferences(updated)
+    }
+
+    private fun normalizePreferences(preferences: EpubPreferences): EpubPreferences {
+        val publisherStyles = if (preferences.textAlign != null) false else preferences.publisherStyles
+        return preferences.copy(publisherStyles = publisherStyles)
+    }
+
+    fun applyTextLayoutWorkaround() {
+        val nav = navigator ?: return
+        val preferredAlign = _preferences.value.textAlign ?: TextAlign.START
+        val cssTextAlign = when (preferredAlign) {
+            TextAlign.LEFT -> "left"
+            TextAlign.RIGHT -> "right"
+            TextAlign.JUSTIFY -> "justify"
+            TextAlign.START -> "start"
+            else -> "start"
+        }
+        val cssHyphens = if (preferredAlign == TextAlign.JUSTIFY) "auto" else "none"
+        val script = """
+            (function() {
+              var styleId = 'story-reader-text-layout';
+              var style = document.getElementById(styleId);
+              if (!style) {
+                style = document.createElement('style');
+                style.id = styleId;
+                document.head.appendChild(style);
+              }
+              style.textContent = `
+                html, body, p, li, div, dd, blockquote, figcaption {
+                  -webkit-hyphens: $cssHyphens !important;
+                  hyphens: $cssHyphens !important;
+                }
+                body, p, li, div, dd, blockquote, figcaption {
+                  text-align: $cssTextAlign !important;
+                  text-align-last: auto !important;
+                }
+              `;
+            })();
+        """.trimIndent()
+        viewModelScope.launch {
+            nav.evaluateJavascript(script)
+        }
+    }
+
+    fun onReaderPageLoaded() {
+        applyTextLayoutWorkaround()
     }
 
     fun updateTtsSpeed(value: Float) {
