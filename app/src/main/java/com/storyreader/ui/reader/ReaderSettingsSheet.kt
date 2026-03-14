@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -63,13 +64,7 @@ private val themeNight = ThemePreview(Color.Black, Color(0xFFFF7722), "Night")
 @Composable
 fun ReaderSettingsSheet(
     preferences: EpubPreferences,
-    ttsSettings: TtsSettingsUiState,
     onPreferencesChange: (EpubPreferences) -> Unit,
-    onTtsSpeedChange: (Float) -> Unit,
-    onTtsPitchChange: (Float) -> Unit,
-    onTtsVoiceSelected: (String?) -> Unit,
-    onTtsEngineSelected: (String?) -> Unit,
-    onOpenSystemTtsSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -208,7 +203,46 @@ fun ReaderSettingsSheet(
                 }
             }
 
-            Text("Text-to-Speech", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Scroll Mode", style = MaterialTheme.typography.labelLarge)
+                Switch(
+                    checked = preferences.scroll == true,
+                    onCheckedChange = { onPreferencesChange(preferences.copy(scroll = it)) }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TtsSettingsSheet(
+    ttsSettings: TtsSettingsUiState,
+    onTtsSpeedChange: (Float) -> Unit,
+    onTtsPitchChange: (Float) -> Unit,
+    onTtsVoiceSelected: (String?) -> Unit,
+    onTtsEngineSelected: (String?) -> Unit,
+    onOpenSystemTtsSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text("Text-to-Speech Settings", style = MaterialTheme.typography.titleLarge)
 
             SliderSetting(
                 label = "Speed",

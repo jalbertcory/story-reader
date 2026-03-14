@@ -66,8 +66,9 @@ class ReadingRepositoryImpl(
     }
 
     /**
-     * Computes reading time by discarding any page where the reader spent more than 3× the
-     * per-session average (idle detection).
+     * Computes reading time by:
+     * - Discarding any page where the reader spent more than 3× the per-session average (idle detection).
+     * - Discarding any page turned in under 5 seconds (rapid skipping that would inflate WPM stats).
      */
     private fun calcAdjustedDuration(
         sessionStartMs: Long,
@@ -80,7 +81,14 @@ class ReadingRepositoryImpl(
         if (intervals.isEmpty()) return 0
         val avgMs = intervals.average()
         val threshold = avgMs * 3.0
-        return (intervals.filter { it <= threshold }.sum() / 1000).toInt()
+        return (intervals
+            .filter { it >= MIN_PAGE_INTERVAL_MS && it <= threshold }
+            .sum() / 1000
+        ).toInt()
+    }
+
+    companion object {
+        private const val MIN_PAGE_INTERVAL_MS = 5_000L
     }
 
     override fun observeSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =

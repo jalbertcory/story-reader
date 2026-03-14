@@ -78,6 +78,7 @@ private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_THEME = "theme"
 private const val KEY_FONT_FAMILY = "font_family"
 private const val KEY_IS_NIGHT = "is_night_theme"
+private const val KEY_SCROLL = "scroll_mode"
 private const val KEY_TTS_PREFS = "tts_prefs_json"
 private const val KEY_TTS_ENGINE = "tts_engine"
 private const val DEFAULT_TTS_SPEED = 1.5
@@ -123,6 +124,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             ?.takeIf { it.isNotEmpty() }
             ?.let { FontFamily(it) }
         val isNight = prefStore.getBoolean(KEY_IS_NIGHT, false)
+        val scroll = if (prefStore.contains(KEY_SCROLL)) prefStore.getBoolean(KEY_SCROLL, false) else null
         return if (isNight) {
             EpubPreferences(
                 fontSize = fontSize,
@@ -130,10 +132,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 theme = null,
                 backgroundColor = org.readium.r2.navigator.preferences.Color(0xFF000000.toInt()),
                 textColor = org.readium.r2.navigator.preferences.Color(0xFFFF7722.toInt()),
-                publisherStyles = false
+                publisherStyles = false,
+                scroll = scroll
             )
         } else {
-            EpubPreferences(fontSize = fontSize, theme = theme, fontFamily = fontFamily)
+            EpubPreferences(fontSize = fontSize, theme = theme, fontFamily = fontFamily, scroll = scroll)
         }
     }
 
@@ -156,6 +159,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             })
             putString(KEY_FONT_FAMILY, prefs.fontFamily?.name ?: "")
             putBoolean(KEY_IS_NIGHT, isNight)
+            if (prefs.scroll != null) putBoolean(KEY_SCROLL, prefs.scroll!!)
+            else remove(KEY_SCROLL)
         }.apply()
         app.isDarkReadingTheme.value = prefs.theme == Theme.DARK || isNight
     }
