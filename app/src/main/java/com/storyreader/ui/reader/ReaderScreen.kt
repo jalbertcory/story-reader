@@ -187,6 +187,7 @@ fun ReaderScreen(
                         publication = uiState.publication!!,
                         bookId = bookId,
                         initialLocatorJson = uiState.initialLocatorJson,
+                        initialPreferences = preferences,
                         viewModel = viewModel,
                         modifier = Modifier
                             .fillMaxSize()
@@ -534,6 +535,7 @@ private fun EpubReaderContent(
     publication: Publication,
     bookId: String,
     initialLocatorJson: String?,
+    initialPreferences: EpubPreferences,
     viewModel: ReaderViewModel,
     modifier: Modifier = Modifier
 ) {
@@ -545,7 +547,6 @@ private fun EpubReaderContent(
     val initialLocator = remember(initialLocatorJson) {
         initialLocatorJson?.let { Locator.fromJSON(org.json.JSONObject(it)) }
     }
-    val initialPreferences = viewModel.preferences.value
     val paginationListener = remember(viewModel) {
         object : EpubNavigatorFragment.PaginationListener {
             override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
