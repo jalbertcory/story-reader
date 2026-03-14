@@ -310,6 +310,12 @@ private fun GlobalStatsCard(
                     value = formatWords(global.allTimeTotalWords),
                     label = "Words Read"
                 )
+                if (global.allTimeManualWpm > 0) {
+                    StatChip(
+                        value = "${global.allTimeManualWpm}",
+                        label = "Manual WPM"
+                    )
+                }
             }
         }
     }
@@ -367,8 +373,9 @@ private fun StatChip(value: String, label: String) {
 @Composable
 private fun BookStatCard(item: BookStatItem) {
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
-    val wpm = if (item.totalReadingSeconds > 0)
-        (item.totalWordsRead.toFloat() / (item.totalReadingSeconds / 60f)).toInt()
+    // WPM based on manual reading only (not TTS)
+    val manualWpm = if (item.manualDurationSeconds > 60)
+        (item.manualWordsRead.toFloat() / (item.manualDurationSeconds / 60f)).toInt()
     else 0
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -413,9 +420,16 @@ private fun BookStatCard(item: BookStatItem) {
                     LabelValue("Last read", dateFormat.format(Date(item.lastReadMs)))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    LabelValue("Time read", formatHours(item.totalReadingSeconds.toLong()))
+                    LabelValue("Reading", formatHours(item.manualDurationSeconds.toLong()))
+                    if (item.ttsDurationSeconds > 0) {
+                        LabelValue("TTS", formatHours(item.ttsDurationSeconds.toLong()))
+                    }
                     LabelValue("Words", formatWords(item.totalWordsRead.toLong()))
-                    if (wpm > 0) LabelValue("WPM", "$wpm")
+                }
+                if (manualWpm > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        LabelValue("Manual WPM", "$manualWpm")
+                    }
                 }
                 if (item.book.totalProgression > 0f) {
                     Row(

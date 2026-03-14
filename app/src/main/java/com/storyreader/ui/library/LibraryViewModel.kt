@@ -6,7 +6,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.db.entity.ReadingSessionEntity
 import com.storyreader.data.repository.BookRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,4 +71,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
         }
     }
+
+    fun hideBook(bookId: String) {
+        viewModelScope.launch {
+            repository.hideBook(bookId)
+        }
+    }
+
+    fun getSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =
+        sessionDao.getSessionsForBook(bookId)
 }

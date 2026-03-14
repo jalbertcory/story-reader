@@ -14,6 +14,9 @@ interface ReadingPositionDao {
     @Insert
     suspend fun insertPosition(position: ReadingPositionEntity)
 
+    @Query("SELECT * FROM reading_positions WHERE bookId = :bookId ORDER BY timestamp DESC, id DESC LIMIT 1")
+    suspend fun getLatestPositionOnce(bookId: String): ReadingPositionEntity?
+
     @Query("SELECT * FROM reading_positions ORDER BY timestamp DESC")
     fun getAllPositions(): Flow<List<ReadingPositionEntity>>
 }

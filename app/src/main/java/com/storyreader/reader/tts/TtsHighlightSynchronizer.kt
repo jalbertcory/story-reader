@@ -49,9 +49,12 @@ class TtsHighlightSynchronizer(
                         group = "tts"
                     )
 
-                    // Follow sentence/utterance progression, not per-word token updates.
-                    val followLocator = location.utteranceLocator
-                    if (followLocator != lastFollowLocator) {
+                    // Follow the highlight — navigate when it moves to a different page.
+                    // Using the resolved highlight locator (token when available) so the
+                    // page turns exactly when the highlighted word crosses a page boundary.
+                    val followLocator = highlightLocator
+                    val hrefChanged = followLocator.href != lastFollowLocator?.href
+                    if (hrefChanged || followLocator != lastFollowLocator) {
                         lastFollowLocator = followLocator
                         epubNavigator.go(followLocator)
                     }

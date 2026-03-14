@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 interface ReadingRepository {
     fun observeLatestPosition(bookId: String): Flow<ReadingPositionEntity?>
     suspend fun savePosition(bookId: String, locatorJson: String)
-    suspend fun startSession(bookId: String): Long
+    suspend fun startSession(bookId: String, isTts: Boolean = false): Long
     suspend fun finalizeSession(
         sessionId: Long,
         pageTurnTimestampsMs: List<Long>,
@@ -35,8 +35,8 @@ class ReadingRepositoryImpl(
         )
     }
 
-    override suspend fun startSession(bookId: String): Long =
-        sessionDao.insert(ReadingSessionEntity(bookId = bookId))
+    override suspend fun startSession(bookId: String, isTts: Boolean): Long =
+        sessionDao.insert(ReadingSessionEntity(bookId = bookId, isTts = isTts))
 
     override suspend fun finalizeSession(
         sessionId: Long,
@@ -51,10 +51,10 @@ class ReadingRepositoryImpl(
         val rawDuration = ((nowMs - sessionStartMs) / 1000).toInt()
         val adjustedDuration = calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
         val pagesTurned = pageTurnTimestampsMs.size
-        val wordsRead = if (bookWordCount > 0)
+        val wordsRead = if (bookWordCount > 0 && progressionEnd > progressionStart)
             ((progressionEnd - progressionStart).coerceAtLeast(0f) * bookWordCount).toInt()
         else
-            (adjustedDuration / 60.0 * 200).toInt()  // fallback estimate for old books
+            (adjustedDuration / 60.0 * 200).toInt()  // fallback estimate
         sessionDao.updateSession(
             session.copy(
                 durationSeconds = adjustedDuration,

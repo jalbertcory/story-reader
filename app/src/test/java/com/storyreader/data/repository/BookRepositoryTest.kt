@@ -38,9 +38,12 @@ class BookRepositoryTest {
         val dao = db.bookDao()
         repository = object : BookRepository {
             override fun observeAll(): Flow<List<BookEntity>> = dao.getAll()
+            override fun observeAllIncludingHidden(): Flow<List<BookEntity>> = dao.getAllIncludingHidden()
             override fun observeById(bookId: String): Flow<BookEntity?> = dao.getById(bookId)
             override suspend fun insert(book: BookEntity) = dao.insert(book)
             override suspend fun delete(book: BookEntity) = dao.delete(book)
+            override suspend fun hideBook(bookId: String) = dao.setHidden(bookId, true)
+            override suspend fun unhideBook(bookId: String) = dao.setHidden(bookId, false)
             override suspend fun updateProgression(bookId: String, progression: Float) =
                 dao.updateProgression(bookId, progression)
             override suspend fun importFromUri(uri: Uri): Result<BookEntity> =

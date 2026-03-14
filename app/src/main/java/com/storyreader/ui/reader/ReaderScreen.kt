@@ -431,7 +431,7 @@ private fun ReaderStatusBar(
     }
 
     val progressText = locator?.locations?.totalProgression?.let {
-        "Book ${"%.1f".format(it * 100)}%"
+        "${"%.1f".format(it * 100)}%"
     } ?: ""
     val chapterStatus = currentChapterStatus(locator, toc, currentChapterLink)
     val centerText = listOfNotNull(

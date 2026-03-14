@@ -21,7 +21,11 @@ data class BookSessionStats(
     val lastSessionStart: Long,
     val totalDurationSeconds: Int,
     val totalWordsRead: Int,
-    val sessionCount: Int
+    val sessionCount: Int,
+    val manualDurationSeconds: Int,
+    val manualWordsRead: Int,
+    val ttsDurationSeconds: Int,
+    val ttsWordsRead: Int
 )
 
 @Dao
@@ -44,7 +48,11 @@ interface ReadingSessionDao {
                MAX(startTime) as lastSessionStart,
                SUM(durationSeconds) as totalDurationSeconds,
                SUM(wordsRead) as totalWordsRead,
-               COUNT(*) as sessionCount
+               COUNT(*) as sessionCount,
+               SUM(CASE WHEN isTts = 0 THEN durationSeconds ELSE 0 END) as manualDurationSeconds,
+               SUM(CASE WHEN isTts = 0 THEN wordsRead ELSE 0 END) as manualWordsRead,
+               SUM(CASE WHEN isTts = 1 THEN durationSeconds ELSE 0 END) as ttsDurationSeconds,
+               SUM(CASE WHEN isTts = 1 THEN wordsRead ELSE 0 END) as ttsWordsRead
         FROM reading_sessions
         GROUP BY bookId
     """)

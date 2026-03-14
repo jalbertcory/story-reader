@@ -11,11 +11,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDao {
-    @Query("SELECT * FROM books ORDER BY title ASC")
+    @Query("SELECT * FROM books WHERE hidden = 0 ORDER BY title ASC")
     fun getAll(): Flow<List<BookEntity>>
+
+    @Query("SELECT * FROM books ORDER BY title ASC")
+    fun getAllIncludingHidden(): Flow<List<BookEntity>>
+
+    @Query("SELECT * FROM books WHERE hidden = 0 ORDER BY title ASC")
+    suspend fun getAllOnce(): List<BookEntity>
 
     @Query("SELECT * FROM books WHERE bookId = :bookId")
     fun getById(bookId: String): Flow<BookEntity?>
+
+    @Query("SELECT * FROM books WHERE bookId = :bookId LIMIT 1")
+    suspend fun getByIdOnce(bookId: String): BookEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(book: BookEntity)
@@ -34,4 +43,7 @@ interface BookDao {
 
     @Query("SELECT wordCount FROM books WHERE bookId = :bookId LIMIT 1")
     suspend fun getWordCountById(bookId: String): Int?
+
+    @Query("UPDATE books SET hidden = :hidden WHERE bookId = :bookId")
+    suspend fun setHidden(bookId: String, hidden: Boolean)
 }

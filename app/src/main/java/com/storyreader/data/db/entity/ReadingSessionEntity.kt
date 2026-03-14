@@ -24,5 +24,6 @@ data class ReadingSessionEntity(
     val durationSeconds: Int = 0,       // Idle-adjusted reading time
     val rawDurationSeconds: Int = 0,    // Total elapsed time including idle
     val pagesTurned: Int = 0,
-    val wordsRead: Int = 0              // Estimated words (durationMinutes × 200 WPM)
+    val wordsRead: Int = 0,             // Estimated words read
+    val isTts: Boolean = false          // Whether this was a TTS session
 )
