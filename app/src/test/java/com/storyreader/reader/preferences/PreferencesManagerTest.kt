@@ -34,10 +34,10 @@ class PreferencesManagerTest {
     }
 
     @Test
-    fun `adjustFontSize defaults to 1_0 when fontSize is null`() {
+    fun `adjustFontSize defaults to 1_5 when fontSize is null`() {
         val prefs = EpubPreferences(fontSize = null)
         val result = PreferencesManager.adjustFontSize(prefs, 0.0)
-        assertEquals(1.0, result.fontSize ?: 0.0, 0.001)
+        assertEquals(1.5, result.fontSize ?: 0.0, 0.001)
     }
 
     @Test

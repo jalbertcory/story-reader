@@ -1,6 +1,9 @@
 package com.storyreader
 
 import android.app.Application
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.storyreader.data.db.AppDatabase
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.BookRepositoryImpl
@@ -31,7 +34,7 @@ class StoryReaderApplication : Application() {
     }
 
     val webDavSyncRepository: WebDavSyncRepository by lazy {
-        WebDavSyncRepository(credentialsManager, database.readingPositionDao(), database.readingSessionDao())
+        WebDavSyncRepository(credentialsManager, database.readingPositionDao(), database.readingSessionDao(), database.bookDao())
     }
 
     // Global flag that drives dark app-chrome (top bar, nav bar, status bar tint) when
@@ -53,5 +56,19 @@ class StoryReaderApplication : Application() {
         if (credentialsManager.hasCredentials) {
             SyncScheduler.schedulePeriodicSync(this)
         }
+
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                if (credentialsManager.hasCredentials) {
+                    SyncScheduler.scheduleImmediateSync(this@StoryReaderApplication)
+                }
+            }
+
+            override fun onStart(owner: LifecycleOwner) {
+                if (credentialsManager.hasCredentials) {
+                    SyncScheduler.scheduleImmediateSync(this@StoryReaderApplication)
+                }
+            }
+        })
     }
 }

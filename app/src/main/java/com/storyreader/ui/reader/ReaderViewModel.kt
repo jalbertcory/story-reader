@@ -10,6 +10,8 @@ import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
+import com.storyreader.data.sync.SyncCredentialsManager
+import com.storyreader.data.sync.SyncScheduler
 import com.storyreader.reader.epub.EpubRepository
 import com.storyreader.reader.tts.TtsCatalog
 import com.storyreader.reader.tts.TtsEngineOption
@@ -111,7 +113,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun loadSavedPreferences(): EpubPreferences {
         val fontSize = prefStore.getFloat(KEY_FONT_SIZE, Float.MIN_VALUE)
-            .takeIf { it != Float.MIN_VALUE }?.toDouble()
+            .takeIf { it != Float.MIN_VALUE }?.toDouble() ?: 1.5
         val theme = when (prefStore.getString(KEY_THEME, null)) {
             "DARK" -> Theme.DARK
             "SEPIA" -> Theme.SEPIA
@@ -630,6 +632,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun finalizeSession() {
         finalizeCurrentSession()
+        if (app.credentialsManager.hasCredentials) {
+            SyncScheduler.scheduleImmediateSync(app)
+        }
     }
 
     override fun onCleared() {

@@ -21,12 +21,13 @@ class SyncWorker(
         val syncRepo = WebDavSyncRepository(
             credentialsManager = credentialsManager,
             positionDao = app.database.readingPositionDao(),
-            sessionDao = app.database.readingSessionDao()
+            sessionDao = app.database.readingSessionDao(),
+            bookDao = app.database.bookDao()
         )
 
-        return syncRepo.uploadSyncData().fold(
+        return syncRepo.syncBidirectional().fold(
             onSuccess = { Result.success() },
-            onFailure = { e ->
+            onFailure = {
                 if (runAttemptCount < 3) Result.retry() else Result.failure()
             }
         )

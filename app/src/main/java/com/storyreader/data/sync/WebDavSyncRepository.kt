@@ -8,8 +8,9 @@ import at.bitfire.dav4jvm.property.GetContentLength
 import at.bitfire.dav4jvm.property.ResourceType
 import com.storyreader.data.db.dao.ReadingPositionDao
 import com.storyreader.data.db.dao.ReadingSessionDao
+import com.storyreader.data.db.entity.ReadingPositionEntity
+import com.storyreader.data.db.entity.ReadingSessionEntity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -23,7 +24,8 @@ import java.io.File
 class WebDavSyncRepository(
     private val credentialsManager: SyncCredentialsManager,
     private val positionDao: ReadingPositionDao,
-    private val sessionDao: ReadingSessionDao
+    private val sessionDao: ReadingSessionDao,
+    private val bookDao: com.storyreader.data.db.dao.BookDao? = null
 ) {
 
     private fun createClient(): OkHttpClient {
@@ -135,41 +137,37 @@ class WebDavSyncRepository(
 
     suspend fun uploadSyncData(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val positions = positionDao.getAllPositions().firstOrNull() ?: emptyList()
-            val sessions = sessionDao.getAllSessions().firstOrNull() ?: emptyList()
+            val positions = positionDao.getLatestPositionPerBook()
+            val sessions = sessionDao.getAllSessionsOnce()
+            val json = buildSyncJson(positions, sessions)
+            uploadJson(json)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            val json = JSONObject().apply {
-                put("positions", JSONArray().apply {
-                    positions.forEach { pos ->
-                        put(JSONObject().apply {
-                            put("bookId", pos.bookId)
-                            put("locatorJson", pos.locatorJson)
-                            put("timestamp", pos.timestamp)
-                        })
-                    }
-                })
-                put("sessions", JSONArray().apply {
-                    sessions.forEach { session ->
-                        put(JSONObject().apply {
-                            put("bookId", session.bookId)
-                            put("startTime", session.startTime)
-                            put("durationSeconds", session.durationSeconds)
-                            put("pagesTurned", session.pagesTurned)
-                        })
-                    }
-                })
+    suspend fun syncBidirectional(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            // Download remote data (may not exist yet)
+            val remoteJson = try {
+                downloadJson()
+            } catch (_: Exception) {
+                null
             }
 
-            val client = createClient()
-            val url = buildSyncUrl().toHttpUrl()
-            val body = json.toString().toRequestBody("application/json".toMediaType())
+            val localPositions = positionDao.getLatestPositionPerBook()
+            val localSessions = sessionDao.getAllSessionsOnce()
 
-            val davCollection = DavCollection(client, url)
-            davCollection.put(body, "application/json") { response ->
-                if (!response.isSuccessful) {
-                    throw Exception("Upload failed: ${response.code}")
-                }
+            if (remoteJson != null) {
+                mergeRemoteData(remoteJson, localPositions, localSessions)
             }
+
+            // Re-read after merge to get the merged state
+            val mergedPositions = positionDao.getLatestPositionPerBook()
+            val mergedSessions = sessionDao.getAllSessionsOnce()
+            val json = buildSyncJson(mergedPositions, mergedSessions)
+            uploadJson(json)
 
             Result.success(Unit)
         } catch (e: Exception) {
@@ -177,19 +175,122 @@ class WebDavSyncRepository(
         }
     }
 
+    private suspend fun mergeRemoteData(
+        remoteJson: JSONObject,
+        localPositions: List<ReadingPositionEntity>,
+        localSessions: List<ReadingSessionEntity>
+    ) {
+        val localPositionsByBook = localPositions.associateBy { it.bookId }
+
+        // Merge positions: remote wins if newer
+        val remotePositions = remoteJson.optJSONArray("positions")
+        if (remotePositions != null) {
+            for (i in 0 until remotePositions.length()) {
+                val rp = remotePositions.getJSONObject(i)
+                val bookId = rp.getString("bookId")
+                val remoteTimestamp = rp.getLong("timestamp")
+                val locatorJson = rp.getString("locatorJson")
+
+                // Skip if book doesn't exist locally
+                if (bookDao?.getByIdOnce(bookId) == null) continue
+
+                val localPos = localPositionsByBook[bookId]
+                if (localPos == null || remoteTimestamp > localPos.timestamp) {
+                    positionDao.insertPosition(
+                        ReadingPositionEntity(
+                            bookId = bookId,
+                            locatorJson = locatorJson,
+                            timestamp = remoteTimestamp
+                        )
+                    )
+                }
+            }
+        }
+
+        // Merge sessions: insert remote sessions that don't exist locally
+        val remoteSessions = remoteJson.optJSONArray("sessions")
+        if (remoteSessions != null) {
+            for (i in 0 until remoteSessions.length()) {
+                val rs = remoteSessions.getJSONObject(i)
+                val bookId = rs.getString("bookId")
+                val startTime = rs.getLong("startTime")
+
+                // Skip if book doesn't exist locally
+                if (bookDao?.getByIdOnce(bookId) == null) continue
+
+                // Skip if session already exists
+                if (sessionDao.findByBookIdAndStartTime(bookId, startTime) != null) continue
+
+                sessionDao.insert(
+                    ReadingSessionEntity(
+                        bookId = bookId,
+                        startTime = startTime,
+                        durationSeconds = rs.optInt("durationSeconds", 0),
+                        rawDurationSeconds = rs.optInt("rawDurationSeconds", 0),
+                        pagesTurned = rs.optInt("pagesTurned", 0),
+                        wordsRead = rs.optInt("wordsRead", 0),
+                        isTts = rs.optBoolean("isTts", false)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun buildSyncJson(
+        positions: List<ReadingPositionEntity>,
+        sessions: List<ReadingSessionEntity>
+    ): JSONObject = JSONObject().apply {
+        put("positions", JSONArray().apply {
+            positions.forEach { pos ->
+                put(JSONObject().apply {
+                    put("bookId", pos.bookId)
+                    put("locatorJson", pos.locatorJson)
+                    put("timestamp", pos.timestamp)
+                })
+            }
+        })
+        put("sessions", JSONArray().apply {
+            sessions.forEach { session ->
+                put(JSONObject().apply {
+                    put("bookId", session.bookId)
+                    put("startTime", session.startTime)
+                    put("durationSeconds", session.durationSeconds)
+                    put("rawDurationSeconds", session.rawDurationSeconds)
+                    put("pagesTurned", session.pagesTurned)
+                    put("wordsRead", session.wordsRead)
+                    put("isTts", session.isTts)
+                })
+            }
+        })
+    }
+
+    private fun uploadJson(json: JSONObject) {
+        val client = createClient()
+        val url = buildSyncUrl().toHttpUrl()
+        val body = json.toString().toRequestBody("application/json".toMediaType())
+        val davCollection = DavCollection(client, url)
+        davCollection.put(body, "application/json") { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Upload failed: ${response.code}")
+            }
+        }
+    }
+
+    private fun downloadJson(): JSONObject {
+        val client = createClient()
+        val url = buildSyncUrl().toHttpUrl()
+        val davCollection = DavCollection(client, url)
+        var responseBody = ""
+        val headers = okhttp3.Headers.headersOf("Accept-Encoding", "identity")
+        davCollection.get("application/json", headers) { response ->
+            responseBody = response.body?.string() ?: ""
+        }
+        return JSONObject(responseBody)
+    }
+
     suspend fun downloadSyncData(): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val client = createClient()
-            val url = buildSyncUrl().toHttpUrl()
-            val davCollection = DavCollection(client, url)
-
-            var responseBody = ""
-            val headers = okhttp3.Headers.headersOf("Accept-Encoding", "identity")
-            davCollection.get("application/json", headers) { response ->
-                responseBody = response.body?.string() ?: ""
-            }
-
-            Result.success(responseBody)
+            Result.success(downloadJson().toString())
         } catch (e: Exception) {
             Result.failure(e)
         }
