@@ -9,8 +9,17 @@ import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.BookRepositoryImpl
 import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.data.repository.ReadingRepositoryImpl
+import com.storyreader.data.sync.GoogleDriveApi
+import com.storyreader.data.sync.GoogleDriveAuthManager
+import com.storyreader.data.sync.GoogleDriveCredentialsManager
+import com.storyreader.data.sync.GoogleDriveSyncProvider
+import com.storyreader.data.sync.GoogleDriveSyncRepository
+import com.storyreader.data.sync.NextcloudSyncProvider
 import com.storyreader.data.sync.SyncCredentialsManager
+import com.storyreader.data.sync.SyncManager
 import com.storyreader.data.sync.SyncScheduler
+import com.storyreader.data.sync.SyncSettingsStore
+import com.storyreader.data.sync.SyncPayloadStore
 import com.storyreader.data.sync.WebDavSyncRepository
 import com.storyreader.reader.epub.EpubRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,8 +42,45 @@ class StoryReaderApplication : Application() {
         SyncCredentialsManager.create(this)
     }
 
+    val googleDriveCredentialsManager: GoogleDriveCredentialsManager by lazy {
+        GoogleDriveCredentialsManager.create(this)
+    }
+
+    val syncSettingsStore: SyncSettingsStore by lazy {
+        SyncSettingsStore.create(this)
+    }
+
+    val googleDriveAuthManager: GoogleDriveAuthManager by lazy {
+        GoogleDriveAuthManager(this, googleDriveCredentialsManager)
+    }
+
     val webDavSyncRepository: WebDavSyncRepository by lazy {
         WebDavSyncRepository(credentialsManager, database.readingPositionDao(), database.readingSessionDao(), database.bookDao())
+    }
+
+    val googleDriveApi: GoogleDriveApi by lazy {
+        GoogleDriveApi()
+    }
+
+    val googleDriveSyncRepository: GoogleDriveSyncRepository by lazy {
+        GoogleDriveSyncRepository(
+            authManager = googleDriveAuthManager,
+            payloadStore = SyncPayloadStore(
+                positionDao = database.readingPositionDao(),
+                sessionDao = database.readingSessionDao(),
+                bookDao = database.bookDao()
+            ),
+            googleDriveApi = googleDriveApi
+        )
+    }
+
+    val syncManager: SyncManager by lazy {
+        SyncManager(
+            listOf(
+                NextcloudSyncProvider(syncSettingsStore, credentialsManager, webDavSyncRepository),
+                GoogleDriveSyncProvider(syncSettingsStore, googleDriveCredentialsManager, googleDriveSyncRepository)
+            )
+        )
     }
 
     // Global flag that drives dark app-chrome (top bar, nav bar, status bar tint) when
@@ -53,19 +99,19 @@ class StoryReaderApplication : Application() {
         isDarkReadingTheme.value = savedTheme == "DARK" || isNight
         // Note: night theme (custom colors) is detected differently — ReaderViewModel updates this flag
 
-        if (credentialsManager.hasCredentials) {
+        if (syncManager.hasEnabledConfiguredProviders()) {
             SyncScheduler.schedulePeriodicSync(this)
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
-                if (credentialsManager.hasCredentials) {
+                if (syncManager.hasEnabledConfiguredProviders()) {
                     SyncScheduler.scheduleImmediateSync(this@StoryReaderApplication)
                 }
             }
 
             override fun onStart(owner: LifecycleOwner) {
-                if (credentialsManager.hasCredentials) {
+                if (syncManager.hasEnabledConfiguredProviders()) {
                     SyncScheduler.scheduleImmediateSync(this@StoryReaderApplication)
                 }
             }

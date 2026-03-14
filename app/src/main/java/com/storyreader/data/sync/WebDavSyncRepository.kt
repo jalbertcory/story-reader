@@ -23,10 +23,11 @@ import java.io.File
 
 class WebDavSyncRepository(
     private val credentialsManager: SyncCredentialsManager,
-    private val positionDao: ReadingPositionDao,
-    private val sessionDao: ReadingSessionDao,
-    private val bookDao: com.storyreader.data.db.dao.BookDao? = null
+    positionDao: ReadingPositionDao,
+    sessionDao: ReadingSessionDao,
+    bookDao: com.storyreader.data.db.dao.BookDao? = null
 ) {
+    private val payloadStore = SyncPayloadStore(positionDao, sessionDao, bookDao)
 
     private fun createClient(): OkHttpClient {
         val authHandler = BasicDigestAuthHandler(
@@ -143,9 +144,7 @@ class WebDavSyncRepository(
 
     suspend fun uploadSyncData(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val positions = positionDao.getLatestPositionPerBook()
-            val sessions = sessionDao.getAllSessionsOnce()
-            val json = buildSyncJson(positions, sessions)
+            val json = payloadStore.buildLatestJson()
             uploadJson(json)
             Result.success(Unit)
         } catch (e: Exception) {
@@ -162,112 +161,17 @@ class WebDavSyncRepository(
                 null
             }
 
-            val localPositions = positionDao.getLatestPositionPerBook()
-            val localSessions = sessionDao.getAllSessionsOnce()
-
             if (remoteJson != null) {
-                mergeRemoteData(remoteJson, localPositions, localSessions)
+                payloadStore.mergeRemoteData(remoteJson)
             }
 
-            // Re-read after merge to get the merged state
-            val mergedPositions = positionDao.getLatestPositionPerBook()
-            val mergedSessions = sessionDao.getAllSessionsOnce()
-            val json = buildSyncJson(mergedPositions, mergedSessions)
+            val json = payloadStore.buildLatestJson()
             uploadJson(json)
 
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
-
-    private suspend fun mergeRemoteData(
-        remoteJson: JSONObject,
-        localPositions: List<ReadingPositionEntity>,
-        localSessions: List<ReadingSessionEntity>
-    ) {
-        val localPositionsByBook = localPositions.associateBy { it.bookId }
-
-        // Merge positions: remote wins if newer
-        val remotePositions = remoteJson.optJSONArray("positions")
-        if (remotePositions != null) {
-            for (i in 0 until remotePositions.length()) {
-                val rp = remotePositions.getJSONObject(i)
-                val bookId = rp.getString("bookId")
-                val remoteTimestamp = rp.getLong("timestamp")
-                val locatorJson = rp.getString("locatorJson")
-
-                // Skip if book doesn't exist locally
-                if (bookDao?.getByIdOnce(bookId) == null) continue
-
-                val localPos = localPositionsByBook[bookId]
-                if (localPos == null || remoteTimestamp > localPos.timestamp) {
-                    positionDao.insertPosition(
-                        ReadingPositionEntity(
-                            bookId = bookId,
-                            locatorJson = locatorJson,
-                            timestamp = remoteTimestamp
-                        )
-                    )
-                }
-            }
-        }
-
-        // Merge sessions: insert remote sessions that don't exist locally
-        val remoteSessions = remoteJson.optJSONArray("sessions")
-        if (remoteSessions != null) {
-            for (i in 0 until remoteSessions.length()) {
-                val rs = remoteSessions.getJSONObject(i)
-                val bookId = rs.getString("bookId")
-                val startTime = rs.getLong("startTime")
-
-                // Skip if book doesn't exist locally
-                if (bookDao?.getByIdOnce(bookId) == null) continue
-
-                // Skip if session already exists
-                if (sessionDao.findByBookIdAndStartTime(bookId, startTime) != null) continue
-
-                sessionDao.insert(
-                    ReadingSessionEntity(
-                        bookId = bookId,
-                        startTime = startTime,
-                        durationSeconds = rs.optInt("durationSeconds", 0),
-                        rawDurationSeconds = rs.optInt("rawDurationSeconds", 0),
-                        pagesTurned = rs.optInt("pagesTurned", 0),
-                        wordsRead = rs.optInt("wordsRead", 0),
-                        isTts = rs.optBoolean("isTts", false)
-                    )
-                )
-            }
-        }
-    }
-
-    private fun buildSyncJson(
-        positions: List<ReadingPositionEntity>,
-        sessions: List<ReadingSessionEntity>
-    ): JSONObject = JSONObject().apply {
-        put("positions", JSONArray().apply {
-            positions.forEach { pos ->
-                put(JSONObject().apply {
-                    put("bookId", pos.bookId)
-                    put("locatorJson", pos.locatorJson)
-                    put("timestamp", pos.timestamp)
-                })
-            }
-        })
-        put("sessions", JSONArray().apply {
-            sessions.forEach { session ->
-                put(JSONObject().apply {
-                    put("bookId", session.bookId)
-                    put("startTime", session.startTime)
-                    put("durationSeconds", session.durationSeconds)
-                    put("rawDurationSeconds", session.rawDurationSeconds)
-                    put("pagesTurned", session.pagesTurned)
-                    put("wordsRead", session.wordsRead)
-                    put("isTts", session.isTts)
-                })
-            }
-        })
     }
 
     private fun uploadJson(json: JSONObject) {

@@ -78,6 +78,7 @@ fun LibraryScreen(
     onBookClick: (String) -> Unit,
     onSyncSettingsClick: () -> Unit,
     onNextcloudImportClick: () -> Unit,
+    onGoogleDriveImportClick: () -> Unit,
     onStatsClick: () -> Unit,
     viewModel: LibraryViewModel = viewModel()
 ) {
@@ -131,8 +132,7 @@ fun LibraryScreen(
                                 },
                                 onClick = {
                                     showImportMenu = false
-                                    // Google Drive is accessible through the system file picker
-                                    filePickerLauncher.launch(arrayOf("application/epub+zip"))
+                                    onGoogleDriveImportClick()
                                 }
                             )
                             if (uiState.hasNextcloudCredentials) {

@@ -12,20 +12,11 @@ class SyncWorker(
 
     override suspend fun doWork(): Result {
         val app = applicationContext as StoryReaderApplication
-        val credentialsManager = SyncCredentialsManager.create(applicationContext)
-
-        if (!credentialsManager.hasCredentials) {
+        if (!app.syncManager.hasEnabledConfiguredProviders()) {
             return Result.failure()
         }
 
-        val syncRepo = WebDavSyncRepository(
-            credentialsManager = credentialsManager,
-            positionDao = app.database.readingPositionDao(),
-            sessionDao = app.database.readingSessionDao(),
-            bookDao = app.database.bookDao()
-        )
-
-        return syncRepo.syncBidirectional().fold(
+        return app.syncManager.syncEnabledProviders().fold(
             onSuccess = { Result.success() },
             onFailure = {
                 if (runAttemptCount < 3) Result.retry() else Result.failure()
