@@ -79,7 +79,9 @@ data class AppSettingsUiState(
     val serverUrl: String = "",
     val username: String = "",
     val appPassword: String = "",
-    val savedMessage: String? = null
+    val savedMessage: String? = null,
+    val hasCredentials: Boolean = false,
+    val isEditing: Boolean = false
 )
 
 @OptIn(ExperimentalReadiumApi::class)
@@ -94,7 +96,9 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
             preferences = loadPrefs(),
             serverUrl = credManager.serverUrl ?: "",
             username = credManager.username ?: "",
-            appPassword = credManager.appPassword ?: ""
+            appPassword = credManager.appPassword ?: "",
+            hasCredentials = credManager.hasCredentials,
+            isEditing = !credManager.hasCredentials
         )
     )
     val uiState: StateFlow<AppSettingsUiState> = _uiState.asStateFlow()
@@ -145,6 +149,10 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         app.isDarkReadingTheme.value = prefs.theme == Theme.DARK || isNight
     }
 
+    fun startEditingCredentials() {
+        _uiState.value = _uiState.value.copy(isEditing = true, savedMessage = null)
+    }
+
     fun onServerUrlChange(v: String) { _uiState.value = _uiState.value.copy(serverUrl = v, savedMessage = null) }
     fun onUsernameChange(v: String) { _uiState.value = _uiState.value.copy(username = v, savedMessage = null) }
     fun onPasswordChange(v: String) { _uiState.value = _uiState.value.copy(appPassword = v, savedMessage = null) }
@@ -154,13 +162,22 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         credManager.serverUrl = s.serverUrl.trim()
         credManager.username = s.username.trim()
         credManager.appPassword = s.appPassword
-        _uiState.value = s.copy(savedMessage = "Credentials saved")
+        _uiState.value = s.copy(
+            savedMessage = "Credentials saved",
+            hasCredentials = credManager.hasCredentials,
+            isEditing = false
+        )
         if (credManager.hasCredentials) SyncScheduler.schedulePeriodicSync(getApplication())
     }
 
     fun clearCredentials() {
         credManager.clear()
-        _uiState.value = _uiState.value.copy(serverUrl = "", username = "", appPassword = "", savedMessage = "Credentials cleared")
+        _uiState.value = _uiState.value.copy(
+            serverUrl = "", username = "", appPassword = "",
+            savedMessage = "Credentials cleared",
+            hasCredentials = false,
+            isEditing = true
+        )
         SyncScheduler.cancelSync(getApplication())
     }
 }
@@ -287,38 +304,54 @@ fun AppSettingsScreen(
 
             // ── Nextcloud / Sync ─────────────────────────────────────────────────
             Text("Nextcloud Sync", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Connect to a Nextcloud server using an App Password (Settings → Security → App Passwords).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
-            OutlinedTextField(
-                value = uiState.serverUrl,
-                onValueChange = viewModel::onServerUrlChange,
-                label = { Text("Server URL") },
-                placeholder = { Text("https://cloud.example.com") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = uiState.username,
-                onValueChange = viewModel::onUsernameChange,
-                label = { Text("Username") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = uiState.appPassword,
-                onValueChange = viewModel::onPasswordChange,
-                label = { Text("App Password") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation()
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = viewModel::saveCredentials, modifier = Modifier.weight(1f)) { Text("Save") }
-                OutlinedButton(onClick = viewModel::clearCredentials, modifier = Modifier.weight(1f)) { Text("Clear") }
+            if (uiState.hasCredentials && !uiState.isEditing) {
+                Text(
+                    uiState.serverUrl,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "User: ${uiState.username}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(onClick = viewModel::startEditingCredentials) {
+                    Text("Edit Credentials")
+                }
+            } else {
+                Text(
+                    "Connect to a Nextcloud server using an App Password (Settings → Security → App Passwords).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = uiState.serverUrl,
+                    onValueChange = viewModel::onServerUrlChange,
+                    label = { Text("Server URL") },
+                    placeholder = { Text("https://cloud.example.com") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = uiState.username,
+                    onValueChange = viewModel::onUsernameChange,
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = uiState.appPassword,
+                    onValueChange = viewModel::onPasswordChange,
+                    label = { Text("App Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = viewModel::saveCredentials, modifier = Modifier.weight(1f)) { Text("Save") }
+                    OutlinedButton(onClick = viewModel::clearCredentials, modifier = Modifier.weight(1f)) { Text("Clear") }
+                }
             }
             uiState.savedMessage?.let { msg ->
                 Text(msg, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)

@@ -8,7 +8,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.storyreader.ui.library.LibraryScreen
 import com.storyreader.ui.library.NextcloudBrowserScreen
-import com.storyreader.ui.library.SyncSettingsScreen
 import com.storyreader.ui.reader.ReaderScreen
 import com.storyreader.ui.settings.AppSettingsScreen
 import com.storyreader.ui.stats.StatsScreen
@@ -46,12 +45,6 @@ fun StoryReaderNavHost() {
         }
         composable(Screen.AppSettings.route) {
             AppSettingsScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-        // Keep old SyncSettings route in case it is navigated to from elsewhere
-        composable(Screen.SyncSettings.route) {
-            SyncSettingsScreen(
                 onBack = { navController.popBackStack() }
             )
         }

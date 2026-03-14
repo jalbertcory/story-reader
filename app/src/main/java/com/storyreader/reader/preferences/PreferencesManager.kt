@@ -12,7 +12,7 @@ import org.readium.r2.navigator.preferences.Theme
 object PreferencesManager {
 
     fun adjustFontSize(current: EpubPreferences, delta: Double): EpubPreferences {
-        val next = (current.fontSize ?: 1.0) + delta
+        val next = (current.fontSize ?: 1.5) + delta
         return current.copy(fontSize = next.coerceIn(0.5, 3.0))
     }
 

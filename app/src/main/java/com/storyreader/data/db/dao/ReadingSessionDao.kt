@@ -100,6 +100,12 @@ interface ReadingSessionDao {
     @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE startTime >= :fromMs AND startTime < :toMs")
     suspend fun getWordsReadBetween(fromMs: Long, toMs: Long): Long?
 
+    @Query("SELECT * FROM reading_sessions WHERE bookId = :bookId AND startTime = :startTime LIMIT 1")
+    suspend fun findByBookIdAndStartTime(bookId: String, startTime: Long): ReadingSessionEntity?
+
+    @Query("SELECT * FROM reading_sessions")
+    suspend fun getAllSessionsOnce(): List<ReadingSessionEntity>
+
     @Insert
     suspend fun insert(session: ReadingSessionEntity): Long
 

@@ -19,4 +19,13 @@ interface ReadingPositionDao {
 
     @Query("SELECT * FROM reading_positions ORDER BY timestamp DESC")
     fun getAllPositions(): Flow<List<ReadingPositionEntity>>
+
+    @Query("""
+        SELECT rp.* FROM reading_positions rp
+        INNER JOIN (
+            SELECT bookId, MAX(timestamp) as maxTs
+            FROM reading_positions GROUP BY bookId
+        ) latest ON rp.bookId = latest.bookId AND rp.timestamp = latest.maxTs
+    """)
+    suspend fun getLatestPositionPerBook(): List<ReadingPositionEntity>
 }
