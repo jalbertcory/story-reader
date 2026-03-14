@@ -52,6 +52,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.storyreader.StoryReaderApplication
+import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.sync.GoogleDriveAuthorizationOutcome
 import com.storyreader.data.sync.SyncScheduler
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -97,7 +98,18 @@ data class AppSettingsUiState(
     val isGoogleDriveSyncEnabled: Boolean = false,
     val hasGoogleDriveAccount: Boolean = false,
     val googleDriveAccountLabel: String? = null,
-    val isAuthorizingGoogleDrive: Boolean = false
+    val isAuthorizingGoogleDrive: Boolean = false,
+    val opdsUrl: String = "",
+    val opdsUsername: String = "",
+    val opdsPassword: String = "",
+    val isOpdsStoryManagerBackend: Boolean = false,
+    val hasOpdsConfiguration: Boolean = false,
+    val opdsStatus: String = "Needs setup",
+    val nextcloudStatus: String = "Needs setup",
+    val googleDriveStatus: String = "Needs setup",
+    val syncSummary: String = "No sync providers enabled",
+    val canSyncNow: Boolean = false,
+    val isSyncingNow: Boolean = false
 )
 
 sealed interface AppSettingsEvent {
@@ -111,6 +123,7 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
     private val prefStore = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val nextcloudCredentials = app.credentialsManager
     private val googleDriveCredentials = app.googleDriveCredentialsManager
+    private val opdsCredentials = app.opdsCredentialsManager
     private val syncSettingsStore = app.syncSettingsStore
     private val googleDriveAuthManager = app.googleDriveAuthManager
 
@@ -123,7 +136,14 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
             savedMessage = null,
             draftServerUrl = nextcloudCredentials.serverUrl.orEmpty(),
             draftUsername = nextcloudCredentials.username.orEmpty(),
-            draftAppPassword = nextcloudCredentials.appPassword.orEmpty()
+            draftAppPassword = nextcloudCredentials.appPassword.orEmpty(),
+            draftOpdsUrl = opdsCredentials.url.orEmpty(),
+            draftOpdsUsername = if (opdsCredentials.isStoryManagerBackend) {
+                OpdsCredentialsManager.STORY_MANAGER_USERNAME
+            } else {
+                opdsCredentials.username.orEmpty()
+            },
+            draftOpdsPassword = opdsCredentials.password.orEmpty()
         )
     )
     val uiState: StateFlow<AppSettingsUiState> = _uiState.asStateFlow()
@@ -193,6 +213,55 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
     fun onPasswordChange(value: String) {
         _uiState.value = _uiState.value.copy(appPassword = value, savedMessage = null)
+    }
+
+    fun onOpdsUrlChange(value: String) {
+        _uiState.value = _uiState.value.copy(opdsUrl = value, savedMessage = null)
+    }
+
+    fun onOpdsUsernameChange(value: String) {
+        if (_uiState.value.isOpdsStoryManagerBackend) return
+        _uiState.value = _uiState.value.copy(opdsUsername = value, savedMessage = null)
+    }
+
+    fun onOpdsPasswordChange(value: String) {
+        _uiState.value = _uiState.value.copy(opdsPassword = value, savedMessage = null)
+    }
+
+    fun onOpdsStoryManagerChange(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            isOpdsStoryManagerBackend = enabled,
+            opdsUsername = if (enabled) OpdsCredentialsManager.STORY_MANAGER_USERNAME else _uiState.value.opdsUsername,
+            savedMessage = null
+        )
+    }
+
+    fun saveOpdsSettings() {
+        val state = _uiState.value
+        opdsCredentials.url = state.opdsUrl.trim()
+        opdsCredentials.isStoryManagerBackend = state.isOpdsStoryManagerBackend
+        opdsCredentials.username = if (state.isOpdsStoryManagerBackend) {
+            OpdsCredentialsManager.STORY_MANAGER_USERNAME
+        } else {
+            state.opdsUsername.trim()
+        }
+        opdsCredentials.password = state.opdsPassword
+        refreshUi(savedMessage = "OPDS settings saved")
+    }
+
+    fun clearOpdsSettings() {
+        opdsCredentials.clear()
+        _uiState.value = buildUiState(
+            preferences = _uiState.value.preferences,
+            savedMessage = "OPDS settings cleared",
+            forceEditing = _uiState.value.isEditingNextcloudCredentials,
+            draftServerUrl = _uiState.value.serverUrl,
+            draftUsername = _uiState.value.username,
+            draftAppPassword = _uiState.value.appPassword,
+            draftOpdsUrl = "",
+            draftOpdsUsername = "",
+            draftOpdsPassword = ""
+        )
     }
 
     fun saveNextcloudCredentials() {
@@ -312,14 +381,46 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private fun refreshUi(savedMessage: String?, forceEditing: Boolean? = null) {
+    fun syncNow() {
+        if (!app.syncManager.hasEnabledConfiguredProviders()) {
+            _uiState.value = _uiState.value.copy(savedMessage = "Enable at least one configured sync provider first")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSyncingNow = true, savedMessage = null)
+            app.syncManager.syncEnabledProviders()
+                .onSuccess {
+                    refreshUi(savedMessage = "Sync completed")
+                }
+                .onFailure { error ->
+                    _uiState.value = buildUiState(
+                        preferences = _uiState.value.preferences,
+                        savedMessage = error.message ?: "Sync failed",
+                        forceEditing = _uiState.value.isEditingNextcloudCredentials,
+                        draftServerUrl = _uiState.value.serverUrl,
+                        draftUsername = _uiState.value.username,
+                        draftAppPassword = _uiState.value.appPassword,
+                        draftOpdsUrl = _uiState.value.opdsUrl,
+                        draftOpdsUsername = _uiState.value.opdsUsername,
+                        draftOpdsPassword = _uiState.value.opdsPassword,
+                        isSyncingNow = false
+                    )
+                }
+        }
+    }
+
+    private fun refreshUi(savedMessage: String?, forceEditing: Boolean? = null, isSyncingNow: Boolean = false) {
         _uiState.value = buildUiState(
             preferences = _uiState.value.preferences,
             savedMessage = savedMessage,
             forceEditing = forceEditing,
             draftServerUrl = _uiState.value.serverUrl,
             draftUsername = _uiState.value.username,
-            draftAppPassword = _uiState.value.appPassword
+            draftAppPassword = _uiState.value.appPassword,
+            draftOpdsUrl = _uiState.value.opdsUrl,
+            draftOpdsUsername = _uiState.value.opdsUsername,
+            draftOpdsPassword = _uiState.value.opdsPassword,
+            isSyncingNow = isSyncingNow
         )
     }
 
@@ -329,9 +430,17 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         forceEditing: Boolean? = null,
         draftServerUrl: String,
         draftUsername: String,
-        draftAppPassword: String
+        draftAppPassword: String,
+        draftOpdsUrl: String,
+        draftOpdsUsername: String,
+        draftOpdsPassword: String,
+        isSyncingNow: Boolean = false
     ): AppSettingsUiState {
         val hasNextcloudCredentials = nextcloudCredentials.hasCredentials
+        val storedOpdsCredentials = opdsCredentials.currentCredentials()
+        val nextcloudEnabled = syncSettingsStore.isNextcloudEnabled && hasNextcloudCredentials
+        val googleDriveEnabled = syncSettingsStore.isGoogleDriveEnabled && googleDriveCredentials.hasAccount
+        val canSyncNow = app.syncManager.hasEnabledConfiguredProviders()
         return AppSettingsUiState(
             preferences = preferences,
             serverUrl = if (hasNextcloudCredentials) nextcloudCredentials.serverUrl.orEmpty() else draftServerUrl,
@@ -340,12 +449,44 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
             savedMessage = savedMessage,
             hasNextcloudCredentials = hasNextcloudCredentials,
             isEditingNextcloudCredentials = forceEditing ?: !hasNextcloudCredentials,
-            isNextcloudSyncEnabled = syncSettingsStore.isNextcloudEnabled && hasNextcloudCredentials,
-            isGoogleDriveSyncEnabled = syncSettingsStore.isGoogleDriveEnabled && googleDriveCredentials.hasAccount,
+            isNextcloudSyncEnabled = nextcloudEnabled,
+            isGoogleDriveSyncEnabled = googleDriveEnabled,
             hasGoogleDriveAccount = googleDriveCredentials.hasAccount,
             googleDriveAccountLabel = googleDriveCredentials.displayLabel(),
-            isAuthorizingGoogleDrive = false
+            isAuthorizingGoogleDrive = false,
+            opdsUrl = storedOpdsCredentials?.baseUrl ?: draftOpdsUrl,
+            opdsUsername = when {
+                opdsCredentials.isStoryManagerBackend -> OpdsCredentialsManager.STORY_MANAGER_USERNAME
+                storedOpdsCredentials != null -> storedOpdsCredentials.username
+                else -> draftOpdsUsername
+            },
+            opdsPassword = storedOpdsCredentials?.password ?: draftOpdsPassword,
+            isOpdsStoryManagerBackend = opdsCredentials.isStoryManagerBackend,
+            hasOpdsConfiguration = storedOpdsCredentials != null,
+            opdsStatus = when {
+                storedOpdsCredentials != null && storedOpdsCredentials.isStoryManagerBackend -> "Saved for Story Manager backend"
+                storedOpdsCredentials != null -> "Saved for standard OPDS browsing"
+                else -> "Needs setup"
+            },
+            nextcloudStatus = providerStatusText(hasNextcloudCredentials, nextcloudEnabled),
+            googleDriveStatus = providerStatusText(googleDriveCredentials.hasAccount, googleDriveEnabled),
+            syncSummary = when {
+                nextcloudEnabled && googleDriveEnabled -> "2 providers are active for sync"
+                nextcloudEnabled || googleDriveEnabled -> "1 provider is active for sync"
+                hasNextcloudCredentials || googleDriveCredentials.hasAccount -> "Providers are connected but sync is turned off"
+                else -> "No sync providers enabled"
+            },
+            canSyncNow = canSyncNow,
+            isSyncingNow = isSyncingNow
         )
+    }
+
+    private fun providerStatusText(isConfigured: Boolean, isEnabled: Boolean): String {
+        return when {
+            isConfigured && isEnabled -> "Connected and syncing"
+            isConfigured -> "Connected, sync is off"
+            else -> "Needs setup"
+        }
     }
 
     private fun refreshSyncScheduling() {
@@ -491,12 +632,29 @@ fun AppSettingsScreen(
             HorizontalDivider()
 
             Text("Sync Providers", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = uiState.syncSummary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                onClick = viewModel::syncNow,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = uiState.canSyncNow && !uiState.isSyncingNow
+            ) {
+                Text(if (uiState.isSyncingNow) "Syncing..." else "Sync Now")
+            }
 
             SyncProviderCard(
                 title = "Nextcloud",
                 enabled = uiState.isNextcloudSyncEnabled,
                 onEnabledChange = viewModel::onNextcloudEnabledChange
             ) {
+                Text(
+                    text = uiState.nextcloudStatus,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 if (uiState.hasNextcloudCredentials && !uiState.isEditingNextcloudCredentials) {
                     Text(
                         uiState.serverUrl,
@@ -557,6 +715,11 @@ fun AppSettingsScreen(
                 onEnabledChange = viewModel::onGoogleDriveEnabledChange
             ) {
                 Text(
+                    text = uiState.googleDriveStatus,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
                     "Use Google Drive for EPUB imports and sync backups. The first connection will ask for Drive access.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -589,6 +752,65 @@ fun AppSettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(if (uiState.isAuthorizingGoogleDrive) "Connecting..." else "Connect Google Drive")
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            Text("Book Sources", style = MaterialTheme.typography.titleMedium)
+
+            SourceSettingsCard(title = "OPDS Catalog") {
+                Text(
+                    text = uiState.opdsStatus,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Save a default OPDS server for browsing. Story Manager backends lock the username to `reader`.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = uiState.opdsUrl,
+                    onValueChange = viewModel::onOpdsUrlChange,
+                    label = { Text("Catalog URL") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Story Manager backend", style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = uiState.isOpdsStoryManagerBackend,
+                        onCheckedChange = viewModel::onOpdsStoryManagerChange
+                    )
+                }
+                OutlinedTextField(
+                    value = uiState.opdsUsername,
+                    onValueChange = viewModel::onOpdsUsernameChange,
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isOpdsStoryManagerBackend,
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = uiState.opdsPassword,
+                    onValueChange = viewModel::onOpdsPasswordChange,
+                    label = { Text("Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = viewModel::saveOpdsSettings, modifier = Modifier.weight(1f)) {
+                        Text("Save")
+                    }
+                    OutlinedButton(onClick = viewModel::clearOpdsSettings, modifier = Modifier.weight(1f)) {
+                        Text("Clear")
                     }
                 }
             }
@@ -626,6 +848,23 @@ private fun SyncProviderCard(
             Text(title, style = MaterialTheme.typography.titleSmall)
             Switch(checked = enabled, onCheckedChange = onEnabledChange)
         }
+        content()
+    }
+}
+
+@Composable
+private fun SourceSettingsCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
         content()
     }
 }

@@ -79,6 +79,7 @@ fun LibraryScreen(
     onSyncSettingsClick: () -> Unit,
     onNextcloudImportClick: () -> Unit,
     onGoogleDriveImportClick: () -> Unit,
+    onOpdsImportClick: () -> Unit,
     onStatsClick: () -> Unit,
     viewModel: LibraryViewModel = viewModel()
 ) {
@@ -115,36 +116,32 @@ fun LibraryScreen(
                             expanded = showImportMenu,
                             onDismissRequest = { showImportMenu = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("From Device") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp))
-                                },
-                                onClick = {
-                                    showImportMenu = false
-                                    filePickerLauncher.launch(arrayOf("application/epub+zip"))
+                            uiState.importSources.forEachIndexed { index, source ->
+                                if (index > 0 && source.requiresCloudDivider) {
+                                    HorizontalDivider()
                                 }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("From Google Drive") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp))
-                                },
-                                onClick = {
-                                    showImportMenu = false
-                                    onGoogleDriveImportClick()
-                                }
-                            )
-                            if (uiState.hasNextcloudCredentials) {
-                                HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("From Nextcloud") },
+                                    text = { Text(source.label) },
                                     leadingIcon = {
-                                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp))
+                                        Icon(
+                                            when (source) {
+                                                BookImportSource.DEVICE -> Icons.Default.FolderOpen
+                                                else -> Icons.Default.CloudDownload
+                                            },
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     },
                                     onClick = {
                                         showImportMenu = false
-                                        onNextcloudImportClick()
+                                        when (source) {
+                                            BookImportSource.DEVICE -> {
+                                                filePickerLauncher.launch(arrayOf("application/epub+zip"))
+                                            }
+                                            BookImportSource.GOOGLE_DRIVE -> onGoogleDriveImportClick()
+                                            BookImportSource.OPDS -> onOpdsImportClick()
+                                            BookImportSource.NEXTCLOUD -> onNextcloudImportClick()
+                                        }
                                     }
                                 )
                             }
