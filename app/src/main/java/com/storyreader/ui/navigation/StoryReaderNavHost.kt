@@ -1,6 +1,7 @@
 package com.storyreader.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
@@ -24,18 +25,19 @@ import kotlinx.coroutines.withContext
 fun StoryReaderNavHost() {
     val app = LocalContext.current.applicationContext as StoryReaderApplication
     val navController = rememberNavController()
-    val startDestination by produceState<String?>(initialValue = null) {
+
+    // Resolve the most recent book ID before rendering so we can auto-open it on launch.
+    // Empty string means no recent book (show library). Null means still loading.
+    val initialBookId by produceState<String?>(initialValue = null) {
         value = withContext(Dispatchers.IO) {
-            app.database.readingSessionDao()
-                .getMostRecentlyReadVisibleBookId()
-                ?.let(Screen.Reader::createRoute)
-                ?: Screen.Library.route
+            app.database.readingSessionDao().getMostRecentlyReadVisibleBookId() ?: ""
         }
     }
 
-    val resolvedStartDestination = startDestination ?: return
+    // Don't render until we know whether to auto-open a book (avoids a library flash)
+    if (initialBookId == null) return
 
-    NavHost(navController = navController, startDestination = resolvedStartDestination) {
+    NavHost(navController = navController, startDestination = Screen.Library.route) {
         composable(Screen.Library.route) {
             LibraryScreen(
                 onBookClick = { bookId ->
@@ -93,5 +95,13 @@ fun StoryReaderNavHost() {
                 onBack = { navController.popBackStack() }
             )
         }
+    }
+
+    // Auto-open the most recently read book on first launch only.
+    // Library is already in the back stack as the start destination, so back works correctly.
+    val bookIdToOpen = initialBookId?.takeIf { it.isNotEmpty() }
+    LaunchedEffect(bookIdToOpen) {
+        bookIdToOpen ?: return@LaunchedEffect
+        navController.navigate(Screen.Reader.createRoute(bookIdToOpen))
     }
 }

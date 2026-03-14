@@ -130,6 +130,7 @@ fun ReaderScreen(
     val showBars by viewModel.showBars.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
+    var showTtsSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(bookId) { viewModel.openBook(bookId) }
     DisposableEffect(Unit) { onDispose { viewModel.finalizeSession() } }
@@ -260,6 +261,7 @@ fun ReaderScreen(
                         onStop = viewModel::stopTts,
                         onPrevious = viewModel::ttsSkipPrevious,
                         onNext = viewModel::ttsSkipNext,
+                        onSettings = { showTtsSettings = true },
                         style = statusBarStyle
                     )
                 }
@@ -284,14 +286,20 @@ fun ReaderScreen(
         if (showSettings) {
             ReaderSettingsSheet(
                 preferences = preferences,
-                ttsSettings = ttsSettings,
                 onPreferencesChange = { updated -> viewModel.updatePreferences { updated } },
+                onDismiss = { showSettings = false }
+            )
+        }
+
+        if (showTtsSettings) {
+            TtsSettingsSheet(
+                ttsSettings = ttsSettings,
                 onTtsSpeedChange = viewModel::updateTtsSpeed,
                 onTtsPitchChange = viewModel::updateTtsPitch,
                 onTtsVoiceSelected = viewModel::selectTtsVoice,
                 onTtsEngineSelected = viewModel::selectTtsEngine,
                 onOpenSystemTtsSettings = viewModel::openSystemTtsSettings,
-                onDismiss = { showSettings = false }
+                onDismiss = { showTtsSettings = false }
             )
         }
 
@@ -352,6 +360,7 @@ private fun TtsControlsBar(
     onStop: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onSettings: () -> Unit,
     style: StatusBarStyle
 ) {
     Row(
@@ -402,6 +411,17 @@ private fun TtsControlsBar(
             Icon(
                 Icons.Default.SkipNext,
                 contentDescription = "Next page",
+                tint = style.text,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        IconButton(
+            onClick = onSettings,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.Settings,
+                contentDescription = "TTS Settings",
                 tint = style.text,
                 modifier = Modifier.size(22.dp)
             )
