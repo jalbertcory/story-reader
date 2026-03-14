@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val ciVersionCode = providers
+    .gradleProperty("ciVersionCode")
+    .orElse(providers.environmentVariable("CI_VERSION_CODE"))
+val ciVersionName = providers
+    .gradleProperty("ciVersionName")
+    .orElse(providers.environmentVariable("CI_VERSION_NAME"))
+
 android {
     namespace = "com.storyreader"
     compileSdk = 36
@@ -12,8 +19,8 @@ android {
         applicationId = "com.storyreader"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = ciVersionCode.map(String::toInt).orElse(1).get()
+        versionName = ciVersionName.orElse("1.0.0").get()
     }
 
     buildTypes {
