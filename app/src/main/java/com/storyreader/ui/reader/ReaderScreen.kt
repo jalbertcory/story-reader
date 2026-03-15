@@ -73,6 +73,8 @@ import kotlinx.coroutines.isActive
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.epub.css.RsProperties
+import org.readium.r2.navigator.preferences.TextAlign as ReadiumTextAlign
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
@@ -93,6 +95,26 @@ private data class ReaderChromeInsets(val horizontal: Dp, val bottom: Dp)
 private data class ChapterStatus(val label: String, val title: String, val progress: Float?)
 
 private val ReaderBottomBarReservedHeight = 25.dp
+
+@OptIn(ExperimentalReadiumApi::class)
+private fun readiumCssOverridesFor(preferences: EpubPreferences): RsProperties {
+    val preferredAlign = preferences.textAlign ?: ReadiumTextAlign.START
+    val cssTextAlign = when (preferredAlign) {
+        ReadiumTextAlign.LEFT -> "left"
+        ReadiumTextAlign.RIGHT -> "right"
+        ReadiumTextAlign.JUSTIFY -> "justify"
+        ReadiumTextAlign.START -> "start"
+        else -> "start"
+    }
+    val cssHyphens = if (preferredAlign == ReadiumTextAlign.JUSTIFY) "auto" else "none"
+    return RsProperties(
+        overrides = mapOf(
+            "--USER__advancedSettings" to "readium-advanced-on",
+            "--USER__textAlign" to cssTextAlign,
+            "--USER__bodyHyphens" to cssHyphens
+        )
+    )
+}
 
 @OptIn(ExperimentalReadiumApi::class)
 private fun statusBarStyleFor(preferences: EpubPreferences?): StatusBarStyle = when {
@@ -547,6 +569,9 @@ private fun EpubReaderContent(
     val initialLocator = remember(initialLocatorJson) {
         initialLocatorJson?.let { Locator.fromJSON(org.json.JSONObject(it)) }
     }
+    val initialReadiumCss = remember(initialPreferences) {
+        readiumCssOverridesFor(initialPreferences)
+    }
     val paginationListener = remember(viewModel) {
         object : EpubNavigatorFragment.PaginationListener {
             override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
@@ -558,11 +583,14 @@ private fun EpubReaderContent(
             }
         }
     }
-    val fragmentFactory = remember(publication, initialLocator) {
+    val fragmentFactory = remember(publication, initialLocator, initialPreferences, initialReadiumCss) {
         EpubNavigatorFactory(publication).createFragmentFactory(
             initialLocator = initialLocator,
             initialPreferences = initialPreferences,
-            paginationListener = paginationListener
+            paginationListener = paginationListener,
+            configuration = EpubNavigatorFragment.Configuration {
+                readiumCssRsProperties = initialReadiumCss
+            }
         )
     }
 
