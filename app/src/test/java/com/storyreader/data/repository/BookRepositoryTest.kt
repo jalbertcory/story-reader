@@ -116,4 +116,45 @@ class BookRepositoryTest {
         assertEquals(1, books.size)
         assertEquals("New Title", books[0].title)
     }
+
+    @Test
+    fun `hideBook excludes book from observeAll`() = runTest {
+        repository.insert(BookEntity(bookId = "b8", title = "Hidden Book", author = "A"))
+        repository.hideBook("b8")
+
+        val books = repository.observeAll().first()
+        assertEquals(0, books.size)
+    }
+
+    @Test
+    fun `hideBook does not exclude book from observeAllIncludingHidden`() = runTest {
+        repository.insert(BookEntity(bookId = "b9", title = "Secret", author = "A"))
+        repository.hideBook("b9")
+
+        val books = repository.observeAllIncludingHidden().first()
+        assertEquals(1, books.size)
+        assertEquals("Secret", books[0].title)
+    }
+
+    @Test
+    fun `unhideBook makes book visible in observeAll again`() = runTest {
+        repository.insert(BookEntity(bookId = "b10", title = "Restored", author = "A"))
+        repository.hideBook("b10")
+        repository.unhideBook("b10")
+
+        val books = repository.observeAll().first()
+        assertEquals(1, books.size)
+    }
+
+    @Test
+    fun `getWordCount returns stored word count`() = runTest {
+        repository.insert(BookEntity(bookId = "b11", title = "Wordy", author = "A", wordCount = 75_000))
+
+        assertEquals(75_000, repository.getWordCount("b11"))
+    }
+
+    @Test
+    fun `getWordCount returns 0 for unknown book`() = runTest {
+        assertEquals(0, repository.getWordCount("nonexistent"))
+    }
 }
