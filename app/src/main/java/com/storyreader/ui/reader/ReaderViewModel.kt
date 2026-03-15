@@ -3,14 +3,14 @@ package com.storyreader.ui.reader
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
-import com.storyreader.data.sync.SyncCredentialsManager
 import com.storyreader.data.sync.SyncScheduler
 import com.storyreader.reader.epub.EpubRepository
 import com.storyreader.reader.tts.TtsCatalog
@@ -22,7 +22,7 @@ import com.storyreader.reader.tts.TtsVoiceOption
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.readium.navigator.media.tts.AndroidTtsNavigator
 import org.readium.navigator.media.tts.TtsNavigator
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
@@ -179,7 +178,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun savePreferences(prefs: EpubPreferences) {
         val isNight = prefs.backgroundColor?.int == 0xFF000000.toInt()
-        prefStore.edit().apply {
+        prefStore.edit {
             if (prefs.fontSize != null) putFloat(KEY_FONT_SIZE, prefs.fontSize!!.toFloat())
             else remove(KEY_FONT_SIZE)
             putString(KEY_THEME, when (prefs.theme) {
@@ -199,21 +198,21 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 TextAlign.JUSTIFY -> putString(KEY_TEXT_ALIGN, "JUSTIFY")
                 else -> remove(KEY_TEXT_ALIGN)
             }
-        }.apply()
+        }
         app.isDarkReadingTheme.value = prefs.theme == Theme.DARK || isNight
     }
 
     private fun saveTtsPreferences() {
-        prefStore.edit()
-            .putString(KEY_TTS_PREFS, ttsPreferencesSerializer.serialize(_ttsPreferences.value))
-            .putString(KEY_TTS_ENGINE, selectedTtsEnginePackageName)
-            .apply()
+        prefStore.edit {
+            putString(KEY_TTS_PREFS, ttsPreferencesSerializer.serialize(_ttsPreferences.value))
+            putString(KEY_TTS_ENGINE, selectedTtsEnginePackageName)
+        }
     }
 
     private fun saveBrightnessLevel(level: Float) {
-        prefStore.edit()
-            .putFloat(KEY_BRIGHTNESS_LEVEL, ReaderBrightness.clamp(level))
-            .apply()
+        prefStore.edit {
+            putFloat(KEY_BRIGHTNESS_LEVEL, ReaderBrightness.clamp(level))
+        }
     }
 
     private val _ttsState = MutableStateFlow(TtsPlaybackState.STOPPED)
@@ -254,10 +253,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         refreshTtsCatalog()
     }
 
-    fun toggleBars() {
-        _showBars.value = !_showBars.value
-    }
-
     fun openBook(bookId: String) {
         if (currentBookId == bookId) return
         currentBookId = bookId
@@ -266,7 +261,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.value = ReaderUiState(isLoading = true)
 
             val savedPosition = readingRepository.observeLatestPosition(bookId).firstOrNull()
-            val uri = Uri.parse(bookId)
+            val uri = bookId.toUri()
 
             sessionStartProgression = savedPosition?.let { pos ->
                 try {
@@ -736,25 +731,27 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             capturedLocator?.locations?.totalProgression?.toFloat() ?: capturedStartProgression
         val bookId = currentBookId ?: return
         currentSessionId = null
-        viewModelScope.launch(NonCancellable) {
-            // Always persist the final position so it survives app kill
-            if (capturedLocator != null) {
-                readingRepository.savePosition(bookId, capturedLocator.toJSON().toString())
-                bookRepository.updateProgression(
-                    bookId,
-                    capturedEndProgression
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                // Always persist the final position so it survives app kill
+                if (capturedLocator != null) {
+                    readingRepository.savePosition(bookId, capturedLocator.toJSON().toString())
+                    bookRepository.updateProgression(
+                        bookId,
+                        capturedEndProgression
+                    )
+                }
+                val wordCount = bookRepository.getWordCount(bookId)
+                readingRepository.finalizeSession(
+                    sessionId = sessionId,
+                    pageTurnTimestampsMs = capturedTimestamps,
+                    sessionStartMs = capturedStartMs,
+                    isTts = capturedIsTts,
+                    progressionStart = capturedStartProgression,
+                    progressionEnd = capturedEndProgression,
+                    bookWordCount = wordCount
                 )
             }
-            val wordCount = bookRepository.getWordCount(bookId)
-            readingRepository.finalizeSession(
-                sessionId = sessionId,
-                pageTurnTimestampsMs = capturedTimestamps,
-                sessionStartMs = capturedStartMs,
-                isTts = capturedIsTts,
-                progressionStart = capturedStartProgression,
-                progressionEnd = capturedEndProgression,
-                bookWordCount = wordCount
-            )
         }
     }
 

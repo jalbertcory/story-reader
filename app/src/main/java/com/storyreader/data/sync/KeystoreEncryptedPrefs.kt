@@ -69,7 +69,7 @@ internal class KeystoreEncryptedPrefs(
 
     override fun edit(): SharedPreferences.Editor = Editor(backing.edit())
 
-    override fun getAll(): Map<String, *> = backing.getAll()
+    override fun getAll(): Map<String, *> = backing.all
     override fun getStringSet(key: String, defValues: Set<String>?) = backing.getStringSet(key, defValues)
     override fun getInt(key: String, defValue: Int) = backing.getInt(key, defValue)
     override fun getLong(key: String, defValue: Long) = backing.getLong(key, defValue)

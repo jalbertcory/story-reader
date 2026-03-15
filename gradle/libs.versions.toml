@@ -1,19 +1,20 @@
 [versions]
 agp = "9.1.0"
 kotlin = "2.3.10"
+detekt = "1.23.8"
 ksp = "2.3.5"
-composeBom = "2026.02.01"
+composeBom = "2026.03.00"
 room = "2.8.4"
 readium = "3.1.2"
 dav4jvm = "2.2.1"
-workmanager = "2.10.1"
+workmanager = "2.11.1"
 navigation = "2.9.7"
 lifecycle = "2.10.0"
-coreKtx = "1.17.0"
-activityCompose = "1.12.4"
+coreKtx = "1.18.0"
+activityCompose = "1.13.0"
 okhttp = "4.12.0"
 playServicesAuth = "21.5.1"
-desugarJdkLibs = "2.1.4"
+desugarJdkLibs = "2.1.5"
 junit = "4.13.2"
 coroutinesTest = "1.10.2"
 androidxTestCore = "1.7.0"
@@ -21,7 +22,7 @@ androidxTestExtJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
 robolectric = "4.16.1"
 coil = "2.7.0"
-media3 = "1.7.1"
+media3 = "1.9.2"
 
 [libraries]
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
@@ -91,3 +92,4 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

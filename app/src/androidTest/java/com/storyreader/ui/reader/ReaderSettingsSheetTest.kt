@@ -57,12 +57,12 @@ class ReaderSettingsSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.themeNight).performClick()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.THEME_NIGHT).performClick()
 
         composeRule.runOnIdle {
             assertEquals(null, latestPreferences.theme)
-            assertEquals(ReadiumColor(0xFF000000.toInt()), latestPreferences.backgroundColor)
-            assertEquals(ReadiumColor(0xFFFF7722.toInt()), latestPreferences.textColor)
+            assertEquals(0xFF000000.toInt(), latestPreferences.backgroundColor?.int)
+            assertEquals(0xFFFF7722.toInt(), latestPreferences.textColor?.int)
             assertEquals(false, latestPreferences.publisherStyles)
         }
     }
@@ -90,7 +90,7 @@ class ReaderSettingsSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.alignJustify).performClick()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.ALIGN_JUSTIFY).performClick()
 
         composeRule.runOnIdle {
             assertEquals(ReadiumTextAlign.JUSTIFY, latestPreferences.textAlign)
@@ -118,9 +118,9 @@ class ReaderSettingsSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.scrollModeSwitch).assertIsOff()
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.scrollModeSwitch).performClick()
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.scrollModeSwitch).assertIsOn()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH).assertIsOff()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH).performClick()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH).assertIsOn()
 
         composeRule.runOnIdle {
             assertEquals(true, latestPreferences.scroll)
@@ -143,7 +143,7 @@ class ReaderSettingsSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.brightnessSlider)
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.BRIGHTNESS_SLIDER)
             .performSemanticsAction(SemanticsActions.SetProgress) { setProgress ->
                 setProgress(-0.4f)
             }

@@ -3,13 +3,11 @@ package com.storyreader.reader.tts
 import android.app.Application
 import android.app.PendingIntent
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.net.Uri
-import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import androidx.core.net.toUri
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -28,7 +26,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import org.readium.navigator.media.tts.AndroidTtsNavigator
 import org.readium.navigator.media.tts.android.AndroidTtsPreferences
@@ -204,7 +201,7 @@ class TtsMediaService : MediaLibraryService() {
         cleanupStandalonePlayback()
 
         val app = application as StoryReaderApplication
-        val uri = Uri.parse(bookId)
+        val uri = bookId.toUri()
         val publication = app.epubRepository.openPublication(uri).getOrNull() ?: return
 
         // Get last reading position
@@ -247,7 +244,7 @@ class TtsMediaService : MediaLibraryService() {
     }
 
     private fun loadTtsPreferences(): AndroidTtsPreferences {
-        val prefStore = getSharedPreferences("reader_preferences", Context.MODE_PRIVATE)
+        val prefStore = getSharedPreferences("reader_preferences", MODE_PRIVATE)
         val serialized = prefStore.getString("tts_prefs_json", null)
             ?: return AndroidTtsPreferences(speed = 1.5)
         return runCatching { AndroidTtsPreferencesSerializer().deserialize(serialized) }
@@ -255,13 +252,13 @@ class TtsMediaService : MediaLibraryService() {
     }
 
     private fun loadTtsEngine(): String? {
-        val prefStore = getSharedPreferences("reader_preferences", Context.MODE_PRIVATE)
+        val prefStore = getSharedPreferences("reader_preferences", MODE_PRIVATE)
         return prefStore.getString("tts_engine", null)
     }
 
     private fun createReaderIntent(): PendingIntent {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+                PendingIntent.FLAG_IMMUTABLE
         val intent = packageManager.getLaunchIntentForPackage(packageName)
         return PendingIntent.getActivity(this, 0, intent, flags)
     }
@@ -282,7 +279,7 @@ class TtsMediaService : MediaLibraryService() {
             }
             val intent = Intent(ACTION_BIND).setClass(application, TtsMediaService::class.java)
             application.startService(intent)
-            application.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            application.bindService(intent, connection, BIND_AUTO_CREATE)
             return deferred.await()
         }
     }

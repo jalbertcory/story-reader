@@ -106,8 +106,7 @@ class OpdsParser {
             "Untitled"
         }
         val subtitle = entry.childElements("author")
-            .mapNotNull { author -> author.childElements("name").firstOrNull()?.textContent?.trim() }
-            .firstOrNull()
+            .firstNotNullOfOrNull { author -> author.childElements("name").firstOrNull()?.textContent?.trim() }
 
         val links = entry.childElements("link")
         val acquisition = links.firstNotNullOfOrNull { link ->

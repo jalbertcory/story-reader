@@ -64,8 +64,6 @@ class TtsManager(private val application: Application) {
         ttsNavigator = null
     }
 
-    fun getNavigator() = ttsNavigator
-
     companion object {
         fun requestInstallVoice(context: android.content.Context) {
             AndroidTtsEngine.requestInstallVoice(context)

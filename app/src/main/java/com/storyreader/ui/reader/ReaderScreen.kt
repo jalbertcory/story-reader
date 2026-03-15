@@ -481,18 +481,6 @@ private fun flattenTocLinks(links: List<Link>): List<Link> = links.flatMap { lin
     listOf(link) + flattenTocLinks(link.children)
 }
 
-private fun bestMatchingTocLink(locator: Locator?, toc: List<Link>): Link? {
-    if (locator == null) return null
-    val href = locator.href.toString()
-    val allLinks = flattenTocLinks(toc)
-    return allLinks
-        .filter { link ->
-            val linkHref = link.href.toString().substringBefore("#")
-            href.startsWith(linkHref) || href.substringBefore("#").endsWith(linkHref)
-        }
-        .maxByOrNull { it.href.toString().length }
-}
-
 private fun currentChapterStatus(locator: Locator?, toc: List<Link>, currentChapterLink: Link?): ChapterStatus {
     val progress = locator?.locations?.progression?.toFloat()?.coerceIn(0f, 1f)
     if (currentChapterLink == null) return ChapterStatus(label = "", title = "", progress = progress)

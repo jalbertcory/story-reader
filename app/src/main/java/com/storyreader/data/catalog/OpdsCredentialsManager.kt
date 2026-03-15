@@ -2,6 +2,7 @@ package com.storyreader.data.catalog
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.storyreader.data.sync.KeystoreEncryptedPrefs
 
 class OpdsCredentialsManager(
@@ -10,19 +11,19 @@ class OpdsCredentialsManager(
 
     var url: String?
         get() = prefs.getString(KEY_URL, null)
-        set(value) = prefs.edit().putString(KEY_URL, value).apply()
+        set(value) = prefs.edit { putString(KEY_URL, value) }
 
     var username: String?
         get() = prefs.getString(KEY_USERNAME, null)
-        set(value) = prefs.edit().putString(KEY_USERNAME, value).apply()
+        set(value) = prefs.edit { putString(KEY_USERNAME, value) }
 
     var password: String?
         get() = prefs.getString(KEY_PASSWORD, null)
-        set(value) = prefs.edit().putString(KEY_PASSWORD, value).apply()
+        set(value) = prefs.edit { putString(KEY_PASSWORD, value) }
 
     var isStoryManagerBackend: Boolean
         get() = prefs.getBoolean(KEY_IS_STORY_MANAGER_BACKEND, false)
-        set(value) = prefs.edit().putBoolean(KEY_IS_STORY_MANAGER_BACKEND, value).apply()
+        set(value) = prefs.edit { putBoolean(KEY_IS_STORY_MANAGER_BACKEND, value) }
 
     fun currentCredentials(): OpdsCredentials? {
         val baseUrl = url?.trim().orEmpty()
@@ -37,7 +38,7 @@ class OpdsCredentialsManager(
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
     }
 
     companion object {

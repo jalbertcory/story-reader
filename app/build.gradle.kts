@@ -1,13 +1,16 @@
+import org.gradle.api.provider.Provider
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.detekt)
 }
 
-val ciVersionCode = providers
+val ciVersionCode: Provider<String> = providers
     .gradleProperty("ciVersionCode")
     .orElse(providers.environmentVariable("CI_VERSION_CODE"))
-val ciVersionName = providers
+val ciVersionName: Provider<String> = providers
     .gradleProperty("ciVersionName")
     .orElse(providers.environmentVariable("CI_VERSION_NAME"))
 
@@ -40,10 +43,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlin {
-        jvmToolchain(21)
-    }
-
     buildFeatures {
         compose = true
         viewBinding = true
@@ -58,7 +57,22 @@ android {
     lint {
         // NonNullableMutableLiveDataDetector crashes with Kotlin 2.x (IncompatibleClassChangeError)
         disable += "NullSafeMutableLiveData"
+        // Treat these lint categories as errors so the build fails
+        error += "AndroidLintUseKtx"
+        error += "AndroidLintObsoleteSdkInt"
+        error += "AndroidLintUnusedResources"
+        error += "AndroidLintDefaultLocale"
+        abortOnError = true
     }
+
+    detekt {
+        config.setFrom(file("../detekt.yml"))
+        buildUponDefaultConfig = true
+    }
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 
 dependencies {

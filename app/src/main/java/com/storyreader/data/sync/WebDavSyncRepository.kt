@@ -8,8 +8,6 @@ import at.bitfire.dav4jvm.property.GetContentLength
 import at.bitfire.dav4jvm.property.ResourceType
 import com.storyreader.data.db.dao.ReadingPositionDao
 import com.storyreader.data.db.dao.ReadingSessionDao
-import com.storyreader.data.db.entity.ReadingPositionEntity
-import com.storyreader.data.db.entity.ReadingSessionEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -17,7 +15,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
@@ -142,16 +139,6 @@ class WebDavSyncRepository(
         }
     }
 
-    suspend fun uploadSyncData(): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val json = payloadStore.buildLatestJson()
-            uploadJson(json)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
     suspend fun syncBidirectional(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             // Download remote data (may not exist yet)
@@ -213,11 +200,4 @@ class WebDavSyncRepository(
         return JSONObject(responseBody)
     }
 
-    suspend fun downloadSyncData(): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            Result.success(downloadJson().toString())
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 }

@@ -2,26 +2,27 @@ package com.storyreader.data.sync
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 class SyncCredentialsManager(private val prefs: SharedPreferences) {
 
     var serverUrl: String?
         get() = prefs.getString(KEY_SERVER_URL, null)
-        set(value) = prefs.edit().putString(KEY_SERVER_URL, value).apply()
+        set(value) = prefs.edit { putString(KEY_SERVER_URL, value) }
 
     var username: String?
         get() = prefs.getString(KEY_USERNAME, null)
-        set(value) = prefs.edit().putString(KEY_USERNAME, value).apply()
+        set(value) = prefs.edit { putString(KEY_USERNAME, value) }
 
     var appPassword: String?
         get() = prefs.getString(KEY_APP_PASSWORD, null)
-        set(value) = prefs.edit().putString(KEY_APP_PASSWORD, value).apply()
+        set(value) = prefs.edit { putString(KEY_APP_PASSWORD, value) }
 
     val hasCredentials: Boolean
         get() = !serverUrl.isNullOrBlank() && !username.isNullOrBlank() && !appPassword.isNullOrBlank()
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
     }
 
     companion object {

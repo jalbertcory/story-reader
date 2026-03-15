@@ -1,7 +1,6 @@
 package com.storyreader.ui.reader
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,17 +13,16 @@ import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignJustify
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,11 +45,12 @@ import com.storyreader.ui.components.SelectableSettingTile
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
+import java.util.Locale
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.navigator.preferences.TextAlign as ReadiumTextAlign
 
-private val NIGHT_BG_INT = 0xFF000000.toInt()
-private val NIGHT_TEXT_INT = 0xFFFF7722.toInt()
+private const val NIGHT_BG_INT = 0xFF000000.toInt()
+private const val NIGHT_TEXT_INT = 0xFFFF7722.toInt()
 
 @OptIn(ExperimentalReadiumApi::class)
 private fun EpubPreferences.isNightTheme() =
@@ -69,21 +68,21 @@ private val themeSepia = ThemePreview(Color(0xFFFAF4E8), Color(0xFF121212), "Sep
 private val themeNight = ThemePreview(Color.Black, Color(0xFFFF7722), "Night")
 
 object ReaderSettingsTestTags {
-    const val brightnessSlider = "reader_settings_brightness_slider"
-    const val fontSizeSlider = "reader_settings_font_size_slider"
-    const val themeDefault = "reader_settings_theme_default"
-    const val themeDark = "reader_settings_theme_dark"
-    const val themeSepia = "reader_settings_theme_sepia"
-    const val themeNight = "reader_settings_theme_night"
-    const val fontDefault = "reader_settings_font_default"
-    const val fontSerif = "reader_settings_font_serif"
-    const val fontSans = "reader_settings_font_sans"
-    const val fontMono = "reader_settings_font_mono"
-    const val alignLeft = "reader_settings_align_left"
-    const val alignStart = "reader_settings_align_start"
-    const val alignRight = "reader_settings_align_right"
-    const val alignJustify = "reader_settings_align_justify"
-    const val scrollModeSwitch = "reader_settings_scroll_mode_switch"
+    const val BRIGHTNESS_SLIDER = "reader_settings_brightness_slider"
+    const val FONT_SIZE_SLIDER = "reader_settings_font_size_slider"
+    const val THEME_DEFAULT = "reader_settings_theme_default"
+    const val THEME_DARK = "reader_settings_theme_dark"
+    const val THEME_SEPIA = "reader_settings_theme_sepia"
+    const val THEME_NIGHT = "reader_settings_theme_night"
+    const val FONT_DEFAULT = "reader_settings_font_default"
+    const val FONT_SERIF = "reader_settings_font_serif"
+    const val FONT_SANS = "reader_settings_font_sans"
+    const val FONT_MONO = "reader_settings_font_mono"
+    const val ALIGN_LEFT = "reader_settings_align_left"
+    const val ALIGN_START = "reader_settings_align_start"
+    const val ALIGN_RIGHT = "reader_settings_align_right"
+    const val ALIGN_JUSTIFY = "reader_settings_align_justify"
+    const val SCROLL_MODE_SWITCH = "reader_settings_scroll_mode_switch"
 }
 
 @OptIn(ExperimentalReadiumApi::class, ExperimentalMaterial3Api::class)
@@ -127,7 +126,7 @@ fun ReaderSettingsSheet(
                     value = brightnessLevel,
                     onValueChange = onBrightnessLevelChange,
                     valueRange = -1f..1f,
-                    modifier = Modifier.testTag(ReaderSettingsTestTags.brightnessSlider)
+                    modifier = Modifier.testTag(ReaderSettingsTestTags.BRIGHTNESS_SLIDER)
                 )
                 Text(
                     "Swipe vertically along the left edge while reading to adjust. Values below 0 use extra dim.",
@@ -164,7 +163,7 @@ fun ReaderSettingsSheet(
                     onValueChange = { onPreferencesChange(preferences.copy(fontSize = it.toDouble())) },
                     valueRange = 0.5f..2.5f,
                     steps = 39,
-                    modifier = Modifier.testTag(ReaderSettingsTestTags.fontSizeSlider)
+                    modifier = Modifier.testTag(ReaderSettingsTestTags.FONT_SIZE_SLIDER)
                 )
             }
 
@@ -178,7 +177,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeDefault,
                         selected = !isNight && preferences.theme == null,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeDefault),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.THEME_DEFAULT),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(theme = null, backgroundColor = null, textColor = null, publisherStyles = null)
@@ -188,7 +187,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeDark,
                         selected = preferences.theme == Theme.DARK,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeDark),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.THEME_DARK),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(theme = Theme.DARK, backgroundColor = null, textColor = null, publisherStyles = null)
@@ -198,7 +197,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeSepia,
                         selected = preferences.theme == Theme.SEPIA,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeSepia),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.THEME_SEPIA),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(theme = Theme.SEPIA, backgroundColor = null, textColor = null, publisherStyles = null)
@@ -208,7 +207,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeNight,
                         selected = isNight,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeNight),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.THEME_NIGHT),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(
@@ -233,14 +232,14 @@ fun ReaderSettingsSheet(
                         label = "Default",
                         composeFontFamily = FontFamily.Default,
                         selected = preferences.fontFamily == null,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontDefault),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.FONT_DEFAULT),
                         onClick = { onPreferencesChange(preferences.copy(fontFamily = null)) }
                     )
                     FontButton(
                         label = "Serif",
                         composeFontFamily = FontFamily.Serif,
                         selected = preferences.fontFamily?.name == "serif",
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontSerif),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.FONT_SERIF),
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("serif")))
                         }
@@ -249,7 +248,7 @@ fun ReaderSettingsSheet(
                         label = "Sans",
                         composeFontFamily = FontFamily.SansSerif,
                         selected = preferences.fontFamily?.name == "sans-serif",
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontSans),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.FONT_SANS),
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("sans-serif")))
                         }
@@ -258,7 +257,7 @@ fun ReaderSettingsSheet(
                         label = "Mono",
                         composeFontFamily = FontFamily.Monospace,
                         selected = preferences.fontFamily?.name == "monospace",
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontMono),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.FONT_MONO),
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("monospace")))
                         }
@@ -276,28 +275,28 @@ fun ReaderSettingsSheet(
                         icon = Icons.AutoMirrored.Filled.FormatAlignLeft,
                         contentDescription = "Left",
                         selected = preferences.textAlign == ReadiumTextAlign.LEFT || preferences.textAlign == null,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignLeft),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.ALIGN_LEFT),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.LEFT, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.Default.FormatAlignCenter,
                         contentDescription = "Start",
                         selected = preferences.textAlign == ReadiumTextAlign.START,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignStart),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.ALIGN_START),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.START, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.AutoMirrored.Filled.FormatAlignRight,
                         contentDescription = "Right",
                         selected = preferences.textAlign == ReadiumTextAlign.RIGHT,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignRight),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.ALIGN_RIGHT),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.RIGHT, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.Default.FormatAlignJustify,
                         contentDescription = "Justify",
                         selected = preferences.textAlign == ReadiumTextAlign.JUSTIFY,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignJustify),
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.ALIGN_JUSTIFY),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.JUSTIFY, publisherStyles = false)) }
                     )
                 }
@@ -312,7 +311,7 @@ fun ReaderSettingsSheet(
                 Switch(
                     checked = preferences.scroll == true,
                     onCheckedChange = { onPreferencesChange(preferences.copy(scroll = it)) },
-                    modifier = Modifier.testTag(ReaderSettingsTestTags.scrollModeSwitch)
+                    modifier = Modifier.testTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH)
                 )
             }
         }
@@ -353,7 +352,7 @@ fun TtsSettingsSheet(
             SliderSetting(
                 label = "Speed",
                 value = ttsSettings.speed,
-                display = "${String.format("%.2f", ttsSettings.speed)}x",
+                display = "${String.format(Locale.getDefault(), "%.2f", ttsSettings.speed)}x",
                 onReset = { onTtsSpeedChange(1f) },
                 onValueChange = onTtsSpeedChange
             )
@@ -361,7 +360,7 @@ fun TtsSettingsSheet(
             SliderSetting(
                 label = "Pitch",
                 value = ttsSettings.pitch,
-                display = "${String.format("%.2f", ttsSettings.pitch)}x",
+                display = "${String.format(Locale.getDefault(), "%.2f", ttsSettings.pitch)}x",
                 onReset = { onTtsPitchChange(1f) },
                 onValueChange = onTtsPitchChange
             )

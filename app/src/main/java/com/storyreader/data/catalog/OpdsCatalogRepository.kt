@@ -11,7 +11,7 @@ class OpdsCatalogRepository(
     private val httpClient: OkHttpClient = OkHttpClient()
 ) {
 
-    suspend fun fetchCatalog(
+    fun fetchCatalog(
         credentials: OpdsCredentials,
         url: String = credentials.baseUrl
     ): Result<OpdsCatalogPage> = runCatching {
@@ -33,7 +33,7 @@ class OpdsCatalogRepository(
         }
     }
 
-    suspend fun downloadPublication(
+    fun downloadPublication(
         credentials: OpdsCredentials,
         entry: OpdsCatalogEntry,
         destinationDir: File
