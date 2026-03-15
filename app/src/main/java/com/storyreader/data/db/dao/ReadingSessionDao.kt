@@ -126,4 +126,7 @@ interface ReadingSessionDao {
 
     @Update
     suspend fun updateSession(session: ReadingSessionEntity)
+
+    @Query("DELETE FROM reading_sessions WHERE sessionId = :sessionId")
+    suspend fun deleteById(sessionId: Long)
 }

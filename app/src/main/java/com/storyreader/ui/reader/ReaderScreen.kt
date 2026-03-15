@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.BatteryManager
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,7 +11,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,14 +19,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Slider
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -40,6 +40,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -60,20 +61,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.RoundedCornerCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.ViewCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -83,7 +83,6 @@ import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.epub.css.RsProperties
-import org.readium.r2.navigator.preferences.TextAlign as ReadiumTextAlign
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
@@ -92,6 +91,7 @@ import org.readium.r2.shared.publication.Publication
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.readium.r2.navigator.preferences.TextAlign as ReadiumTextAlign
 
 // Detect night theme from preferences
 @OptIn(ExperimentalReadiumApi::class)
@@ -444,7 +444,6 @@ private fun BrightnessOverlay(
     level: Float,
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
-    onDrag: (Float) -> Unit = {},
     onLevelChange: (Float) -> Unit = {}
 ) {
     Surface(
@@ -479,7 +478,7 @@ private fun BrightnessOverlay(
 }
 
 private fun flattenTocLinks(links: List<Link>): List<Link> = links.flatMap { link ->
-    listOf(link) + flattenTocLinks(link.children ?: emptyList())
+    listOf(link) + flattenTocLinks(link.children)
 }
 
 private fun bestMatchingTocLink(locator: Locator?, toc: List<Link>): Link? {
@@ -492,14 +491,6 @@ private fun bestMatchingTocLink(locator: Locator?, toc: List<Link>): Link? {
             href.startsWith(linkHref) || href.substringBefore("#").endsWith(linkHref)
         }
         .maxByOrNull { it.href.toString().length }
-}
-
-private fun chapterTitleFromToc(locator: Locator?, toc: List<Link>): String {
-    if (locator == null) return ""
-    return bestMatchingTocLink(locator, toc)
-        ?.title
-        ?: locator.title
-        ?: ""
 }
 
 private fun currentChapterStatus(locator: Locator?, toc: List<Link>, currentChapterLink: Link?): ChapterStatus {
@@ -630,7 +621,18 @@ private fun ReaderStatusBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(progressText, fontSize = 10.sp, color = style.text, modifier = Modifier.weight(1.1f))
+        Row(
+            modifier = Modifier.weight(1.1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.MenuBook,
+                contentDescription = "Book progress",
+                tint = style.text,
+                modifier = Modifier.size(16.dp).padding(end = 4.dp).offset(y = (-1).dp)
+            )
+            Text(progressText, fontSize = 10.sp, color = style.text)
+        }
         Row(
             modifier = Modifier
                 .weight(2.6f)
@@ -655,13 +657,20 @@ private fun ReaderStatusBar(
                 )
             }
         }
-        Text(
-            "$currentTime  $batteryPct%",
-            fontSize = 10.sp,
-            color = style.text,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1.3f)
-        )
+        Row(
+            modifier = Modifier.weight(1.3f),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("$currentTime  ", fontSize = 10.sp, color = style.text)
+            Text("$batteryPct%", fontSize = 10.sp, color = style.text)
+            Icon(
+                Icons.Filled.BatteryFull,
+                contentDescription = "Battery",
+                tint = style.text,
+                modifier = Modifier.size(11.dp).offset(y = (-1).dp)
+            )
+        }
     }
 }
 
@@ -700,6 +709,7 @@ private fun getBatteryLevel(context: Context): Int {
     return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
 }
 
+@OptIn(ExperimentalReadiumApi::class)
 @Composable
 private fun EpubReaderContent(
     publication: Publication,

@@ -59,6 +59,11 @@ class ReadingRepositoryImpl(
             ((progressionEnd - progressionStart).coerceAtLeast(0f) * bookWordCount).toInt()
         else
             (adjustedDuration / 60.0 * 200).toInt()  // fallback estimate
+        // Discard trivial sessions: no page turns and either too few words or too little time
+        if (pagesTurned == 0 && (wordsRead < MIN_WORDS_THRESHOLD || adjustedDuration < MIN_DURATION_THRESHOLD)) {
+            sessionDao.deleteById(sessionId)
+            return
+        }
         sessionDao.updateSession(
             session.copy(
                 durationSeconds = adjustedDuration,
@@ -93,6 +98,8 @@ class ReadingRepositoryImpl(
 
     companion object {
         private const val MIN_PAGE_INTERVAL_MS = 5_000L
+        private const val MIN_WORDS_THRESHOLD = 50
+        private const val MIN_DURATION_THRESHOLD = 30  // seconds
     }
 
     override fun observeSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =
