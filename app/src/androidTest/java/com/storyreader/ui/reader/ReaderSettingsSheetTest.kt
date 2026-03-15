@@ -1,6 +1,7 @@
 package com.storyreader.ui.reader
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,7 +42,7 @@ class ReaderSettingsSheetTest {
         )
 
         composeRule.setContent {
-            var preferences by mutableStateOf(latestPreferences)
+            var preferences by remember { mutableStateOf(latestPreferences) }
             StoryReaderTheme {
                 ReaderSettingsSheet(
                     preferences = preferences,
@@ -74,7 +75,7 @@ class ReaderSettingsSheetTest {
         )
 
         composeRule.setContent {
-            var preferences by mutableStateOf(latestPreferences)
+            var preferences by remember { mutableStateOf(latestPreferences) }
             StoryReaderTheme {
                 ReaderSettingsSheet(
                     preferences = preferences,
@@ -102,7 +103,7 @@ class ReaderSettingsSheetTest {
         var latestPreferences = EpubPreferences(scroll = false)
 
         composeRule.setContent {
-            var preferences by mutableStateOf(latestPreferences)
+            var preferences by remember { mutableStateOf(latestPreferences) }
             StoryReaderTheme {
                 ReaderSettingsSheet(
                     preferences = preferences,
@@ -129,8 +130,8 @@ class ReaderSettingsSheetTest {
     @Test
     fun brightnessSlider_updatesDisplayedLabel() {
         composeRule.setContent {
-            var brightnessLevel by mutableFloatStateOf(1f)
-            var preferences by mutableStateOf(EpubPreferences())
+            var brightnessLevel by remember { mutableFloatStateOf(1f) }
+            var preferences by remember { mutableStateOf(EpubPreferences()) }
             StoryReaderTheme {
                 ReaderSettingsSheet(
                     preferences = preferences,

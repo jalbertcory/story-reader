@@ -105,7 +105,6 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          profile: pixel_8
           script: ./gradlew connectedDebugAndroidTest
 
       - name: Upload instrumentation test report
