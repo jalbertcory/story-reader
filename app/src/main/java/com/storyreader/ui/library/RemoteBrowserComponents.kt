@@ -20,7 +20,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.storyreader.ui.components.StoryReaderLinearProgressIndicator
 
 data class RemoteBrowserItemUiModel(
     val id: String,
@@ -56,12 +56,9 @@ fun RemoteBrowserContent(
         headerContent?.invoke()
 
         if (totalToDownload > 0) {
-            LinearProgressIndicator(
-                progress = {
-                    downloadedCount.toFloat() / totalToDownload.coerceAtLeast(1)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                drawStopIndicator = {}
+            StoryReaderLinearProgressIndicator(
+                progress = downloadedCount.toFloat() / totalToDownload.coerceAtLeast(1),
+                modifier = Modifier.fillMaxWidth()
             )
             Text(
                 text = "Downloaded $downloadedCount / $totalToDownload",

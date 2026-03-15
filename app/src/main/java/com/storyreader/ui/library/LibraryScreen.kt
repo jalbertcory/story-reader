@@ -12,16 +12,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
@@ -33,7 +29,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -47,16 +42,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.storyreader.data.db.entity.BookEntity
-import java.io.File
+import com.storyreader.ui.components.BookCoverThumbnail
+import com.storyreader.ui.components.BookProgressRow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -195,34 +188,12 @@ fun LibraryScreen(
                                     )
                             ) {
                                 Row(modifier = Modifier.padding(12.dp)) {
-                                    // Cover thumbnail
-                                    if (book.coverUri != null) {
-                                        AsyncImage(
-                                            model = File(book.coverUri),
-                                            contentDescription = "Cover of ${book.title}",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .width(56.dp)
-                                                .height(80.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(56.dp)
-                                                .height(80.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .padding(4.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Book,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(36.dp),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
+                                    BookCoverThumbnail(
+                                        coverUri = book.coverUri,
+                                        title = book.title,
+                                        width = 56.dp,
+                                        height = 80.dp
+                                    )
                                     Column(
                                         modifier = Modifier
                                             .weight(1f)
@@ -247,22 +218,10 @@ fun LibraryScreen(
                                             )
                                         }
                                         if (book.totalProgression > 0f) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            BookProgressRow(
+                                                progress = book.totalProgression,
                                                 modifier = Modifier.padding(top = 6.dp)
-                                            ) {
-                                                LinearProgressIndicator(
-                                                    progress = { book.totalProgression },
-                                                    modifier = Modifier.weight(1f),
-                                                    drawStopIndicator = {}
-                                                )
-                                                Text(
-                                                    text = "${"%.1f".format(book.totalProgression * 100)}%",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
+                                            )
                                         }
                                     }
                                 }
