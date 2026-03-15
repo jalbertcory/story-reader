@@ -64,8 +64,8 @@ private data class ThemePreview(
 )
 
 private val themeDefault = ThemePreview(Color.White, Color(0xFF1C1B1F), "Default")
-private val themeDark = ThemePreview(Color(0xFF1A1A2E), Color(0xFFE0E0E0), "Dark")
-private val themeSepia = ThemePreview(Color(0xFFF5EBD7), Color(0xFF5C4033), "Sepia")
+private val themeDark = ThemePreview(Color(0xFF000000), Color(0xFFFEFEFE), "Dark")
+private val themeSepia = ThemePreview(Color(0xFFFAF4E8), Color(0xFF121212), "Sepia")
 private val themeNight = ThemePreview(Color.Black, Color(0xFFFF7722), "Night")
 
 object ReaderSettingsTestTags {
@@ -162,8 +162,8 @@ fun ReaderSettingsSheet(
                 Slider(
                     value = fontSize,
                     onValueChange = { onPreferencesChange(preferences.copy(fontSize = it.toDouble())) },
-                    valueRange = 0.5f..2.0f,
-                    steps = 29,
+                    valueRange = 0.5f..2.5f,
+                    steps = 39,
                     modifier = Modifier.testTag(ReaderSettingsTestTags.fontSizeSlider)
                 )
             }
