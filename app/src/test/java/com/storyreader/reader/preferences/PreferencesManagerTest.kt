@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.storyreader.ui.reader.ReaderBrightness
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
@@ -66,5 +67,20 @@ class PreferencesManagerTest {
         val prefs = EpubPreferences(fontFamily = FontFamily("sans-serif"))
         val result = PreferencesManager.withFontFamily(prefs, null)
         assertNull(result.fontFamily)
+    }
+
+    @Test
+    fun `reader brightness drag can enter extra dim`() {
+        assertEquals(-0.25f, ReaderBrightness.adjustByDrag(0.1f, 0.35f), 0.001f)
+    }
+
+    @Test
+    fun `reader brightness overlay only appears below zero`() {
+        assertEquals(1f, ReaderBrightness.windowBrightnessFor(1f), 0.001f)
+        assertEquals(0.63f, ReaderBrightness.windowBrightnessFor(0.4f), 0.01f)
+        assertEquals(0.01f, ReaderBrightness.windowBrightnessFor(-0.2f), 0.001f)
+        assertEquals(0f, ReaderBrightness.overlayAlphaFor(1f), 0.001f)
+        assertEquals(0.128f, ReaderBrightness.overlayAlphaFor(0.6f), 0.001f)
+        assertEquals(0.55f, ReaderBrightness.overlayAlphaFor(-0.5f), 0.001f)
     }
 }

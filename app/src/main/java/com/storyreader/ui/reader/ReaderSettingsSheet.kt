@@ -73,7 +73,9 @@ private val themeNight = ThemePreview(Color.Black, Color(0xFFFF7722), "Night")
 @Composable
 fun ReaderSettingsSheet(
     preferences: EpubPreferences,
+    brightnessLevel: Float,
     onPreferencesChange: (EpubPreferences) -> Unit,
+    onBrightnessLevelChange: (Float) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -90,6 +92,31 @@ fun ReaderSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Brightness", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        brightnessLabel(brightnessLevel),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Slider(
+                    value = brightnessLevel,
+                    onValueChange = onBrightnessLevelChange,
+                    valueRange = -1f..1f
+                )
+                Text(
+                    "Swipe vertically along the left edge while reading to adjust. Values below 0 use extra dim.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -258,6 +285,11 @@ fun ReaderSettingsSheet(
             }
         }
     }
+}
+
+private fun brightnessLabel(level: Float): String {
+    val percent = (kotlin.math.abs(level) * 100).toInt()
+    return if (level >= 0f) "$percent%" else "Extra dim $percent%"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

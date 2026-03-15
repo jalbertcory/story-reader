@@ -4,22 +4,29 @@ import android.content.Context
 import android.os.BatteryManager
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -51,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -150,9 +158,12 @@ fun ReaderScreen(
     val currentLocator by viewModel.currentLocator.collectAsState()
     val currentChapter by viewModel.currentChapter.collectAsState()
     val showBars by viewModel.showBars.collectAsState()
+    val brightnessLevel by viewModel.brightnessLevel.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
     var showTtsSettings by remember { mutableStateOf(false) }
+    var isAdjustingBrightness by remember { mutableStateOf(false) }
+    var showBrightnessOverlay by remember { mutableStateOf(false) }
 
     LaunchedEffect(bookId) { viewModel.openBook(bookId) }
     DisposableEffect(Unit) { onDispose { viewModel.finalizeSession() } }
@@ -172,6 +183,31 @@ fun ReaderScreen(
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    DisposableEffect(window) {
+        val originalBrightness = window?.attributes?.screenBrightness ?: -1f
+        onDispose {
+            window?.attributes = window.attributes.apply {
+                screenBrightness = originalBrightness
+            }
+        }
+    }
+    LaunchedEffect(brightnessLevel) {
+        if (window != null) {
+            val lp = window.attributes
+            lp.screenBrightness = ReaderBrightness.windowBrightnessFor(brightnessLevel)
+            window.attributes = lp
+        }
+    }
+
+    // Keep brightness overlay visible for 1.5s after the last interaction
+    LaunchedEffect(isAdjustingBrightness) {
+        if (isAdjustingBrightness) {
+            showBrightnessOverlay = true
+        } else {
+            delay(1500)
+            showBrightnessOverlay = false
         }
     }
 
@@ -307,12 +343,43 @@ fun ReaderScreen(
                     )
                 }
             }
+
+            if (ReaderBrightness.overlayAlphaFor(brightnessLevel) > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = ReaderBrightness.overlayAlphaFor(brightnessLevel)))
+                )
+            }
+
+            ReaderBrightnessGestureZone(
+                modifier = Modifier.align(Alignment.CenterStart),
+                onDragStart = { isAdjustingBrightness = true },
+                onDragEnd = { isAdjustingBrightness = false },
+                onDrag = { dragFraction -> viewModel.adjustBrightnessByDrag(dragFraction) }
+            )
+
+            AnimatedVisibility(
+                visible = showBrightnessOverlay,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                BrightnessOverlay(
+                    level = brightnessLevel,
+                    onDragStart = { isAdjustingBrightness = true },
+                    onDragEnd = { isAdjustingBrightness = false },
+                    onLevelChange = { viewModel.setBrightnessLevel(it) }
+                )
+            }
         }
 
         if (showSettings) {
             ReaderSettingsSheet(
                 preferences = preferences,
+                brightnessLevel = brightnessLevel,
                 onPreferencesChange = { updated -> viewModel.updatePreferences { updated } },
+                onBrightnessLevelChange = viewModel::setBrightnessLevel,
                 onDismiss = { showSettings = false }
             )
         }
@@ -338,6 +405,71 @@ fun ReaderScreen(
                     showToc = false
                 },
                 onDismiss = { showToc = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReaderBrightnessGestureZone(
+    modifier: Modifier = Modifier,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
+    onDrag: (Float) -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(32.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { onDragStart() },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        val height = size.height.takeIf { it > 0 } ?: return@detectVerticalDragGestures
+                        onDrag(dragAmount / height.toFloat())
+                    },
+                    onDragEnd = onDragEnd,
+                    onDragCancel = onDragEnd
+                )
+            }
+    )
+}
+
+@Composable
+private fun BrightnessOverlay(
+    level: Float,
+    onDragStart: () -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDrag: (Float) -> Unit = {},
+    onLevelChange: (Float) -> Unit = {}
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .width(250.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = if (level >= 0f) "Brightness  ${(level * 100).toInt()}%"
+                       else "Extra Dim  ${(-level * 100).toInt()}%",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.inverseOnSurface
+            )
+            Slider(
+                value = level,
+                onValueChange = {
+                    onDragStart()
+                    onLevelChange(it)
+                },
+                onValueChangeFinished = onDragEnd,
+                valueRange = -1f..1f,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
