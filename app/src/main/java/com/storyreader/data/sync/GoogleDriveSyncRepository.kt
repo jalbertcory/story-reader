@@ -7,8 +7,7 @@ class GoogleDriveSyncRepository(
 ) {
 
     suspend fun syncBidirectional(): Result<Unit> = runCatching {
-        val authorization = authManager.authorize().getOrThrow()
-        val accessToken = when (authorization) {
+        val accessToken = when (val authorization = authManager.authorize().getOrThrow()) {
             is GoogleDriveAuthorizationOutcome.Authorized -> authorization.accessToken
             is GoogleDriveAuthorizationOutcome.NeedsResolution -> {
                 throw IllegalStateException("Google Drive needs to be reconnected in Settings before sync can continue")

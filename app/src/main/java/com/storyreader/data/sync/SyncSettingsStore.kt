@@ -2,6 +2,7 @@ package com.storyreader.data.sync
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 class SyncSettingsStore(
     private val prefs: SharedPreferences
@@ -9,11 +10,11 @@ class SyncSettingsStore(
 
     var isNextcloudEnabled: Boolean
         get() = prefs.getBoolean(KEY_NEXTCLOUD_ENABLED, false)
-        set(value) = prefs.edit().putBoolean(KEY_NEXTCLOUD_ENABLED, value).apply()
+        set(value) = prefs.edit { putBoolean(KEY_NEXTCLOUD_ENABLED, value) }
 
     var isGoogleDriveEnabled: Boolean
         get() = prefs.getBoolean(KEY_GOOGLE_DRIVE_ENABLED, false)
-        set(value) = prefs.edit().putBoolean(KEY_GOOGLE_DRIVE_ENABLED, value).apply()
+        set(value) = prefs.edit { putBoolean(KEY_GOOGLE_DRIVE_ENABLED, value) }
 
     companion object {
         private const val KEY_NEXTCLOUD_ENABLED = "nextcloud_enabled"

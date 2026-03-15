@@ -1,0 +1,104 @@
+build:
+  maxIssues: 0
+
+# detekt rule reference: https://detekt.dev/docs/rules/
+# Goal: catch real bugs and code hygiene issues without being noisy about Compose patterns.
+
+naming:
+  active: true
+  # const vals must be SCREAMING_SNAKE_CASE
+  ObjectPropertyNaming:
+    active: true
+    constantPattern: '[A-Z][_A-Z0-9]*'
+    propertyPattern: '[A-Za-z][_A-Za-z0-9]*'
+    privatePropertyPattern: '(_)?[A-Za-z][_A-Za-z0-9]*'
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: '[A-Z][_A-Z0-9]*'
+    propertyPattern: '[A-Za-z][_A-Za-z0-9]*'
+    privatePropertyPattern: '(_)?[A-Za-z][_A-Za-z0-9]*'
+  FunctionNaming:
+    active: true
+    # Allow backtick-style test names and Composable uppercase names
+    functionPattern: '([a-z][a-zA-Z0-9]*)|(`.*`)'
+    excludes: ['**/ui/**', '**/components/**']
+  FunctionParameterNaming:
+    active: true
+    # Allow _ prefix for intentionally unused parameters
+    parameterPattern: '(_)?[a-z][A-Za-z0-9]*'
+  MatchingDeclarationName:
+    active: false  # Many files have multiple top-level declarations
+
+coroutines:
+  active: true
+  RedundantSuspendModifier:
+    active: true
+  GlobalCoroutineUsage:
+    active: true
+
+style:
+  active: true
+  UnusedImports:
+    active: true
+  MayBeConst:
+    active: true
+  UnusedPrivateMember:
+    active: true
+    allowedNames: '(_.*|ignored|expected|serialVersionUID)'
+  UnusedPrivateProperty:
+    active: true
+    allowedNames: '(_.*|ignored|expected|serialVersionUID)'
+  UnusedParameter:
+    active: true
+    allowedNames: '(_.*|ignored|expected)'
+  # Disabled: these are stylistic choices, not bugs
+  ForbiddenComment:
+    active: false
+  MagicNumber:
+    active: false
+  ReturnCount:
+    active: false
+  ThrowsCount:
+    active: false
+  MaxLineLength:
+    active: false
+  UseCheckOrError:
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+
+potential-bugs:
+  active: true
+  UnreachableCode:
+    active: true
+
+empty-blocks:
+  active: true
+  EmptyFunctionBlock:
+    active: true
+    # Allow empty overrides (common in interface implementations)
+    ignoreOverridden: true
+
+exceptions:
+  active: true
+  # Disable noisy exception rules — catching Exception is common in Android I/O code
+  TooGenericExceptionCaught:
+    active: false
+  TooGenericExceptionThrown:
+    active: false
+  SwallowedException:
+    active: false
+
+complexity:
+  active: true
+  # Compose functions are naturally long and complex — disable these thresholds
+  LongMethod:
+    active: false
+  LongParameterList:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+  TooManyFunctions:
+    active: false
+  ComplexCondition:
+    active: false

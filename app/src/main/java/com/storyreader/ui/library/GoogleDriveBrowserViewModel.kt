@@ -6,7 +6,6 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
-import com.storyreader.data.sync.GoogleDriveAuthManager
 import com.storyreader.data.sync.GoogleDriveAuthorizationOutcome
 import com.storyreader.data.sync.GoogleDriveItem
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -203,7 +202,4 @@ class GoogleDriveBrowserViewModel(application: Application) : AndroidViewModel(a
             }
     }
 
-    companion object {
-        private const val ROOT_FOLDER_ID = "root"
-    }
 }

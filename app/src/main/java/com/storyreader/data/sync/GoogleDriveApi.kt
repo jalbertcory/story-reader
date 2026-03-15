@@ -17,7 +17,7 @@ class GoogleDriveApi(
     private val httpClient: OkHttpClient = OkHttpClient()
 ) {
 
-    suspend fun listFolder(
+    fun listFolder(
         accessToken: String,
         folderId: String
     ): Result<List<GoogleDriveItem>> = runCatching {
@@ -31,7 +31,7 @@ class GoogleDriveApi(
         response.getJSONArray("files").toGoogleDriveItems()
     }
 
-    suspend fun downloadFile(
+    fun downloadFile(
         accessToken: String,
         fileId: String,
         destination: File
@@ -61,7 +61,7 @@ class GoogleDriveApi(
         destination.delete()
     }
 
-    suspend fun findSyncFile(
+    fun findSyncFile(
         accessToken: String,
         fileName: String
     ): Result<GoogleDriveSyncFile?> = runCatching {
@@ -82,7 +82,7 @@ class GoogleDriveApi(
         }
     }
 
-    suspend fun downloadSyncJson(
+    fun downloadSyncJson(
         accessToken: String,
         fileId: String
     ): Result<JSONObject> = runCatching {
@@ -104,7 +104,7 @@ class GoogleDriveApi(
         }
     }
 
-    suspend fun uploadSyncJson(
+    fun uploadSyncJson(
         accessToken: String,
         fileId: String?,
         fileName: String,

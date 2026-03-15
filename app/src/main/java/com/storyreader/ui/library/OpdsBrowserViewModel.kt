@@ -6,7 +6,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.catalog.OpdsCatalogEntry
-import com.storyreader.data.catalog.OpdsCredentials
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

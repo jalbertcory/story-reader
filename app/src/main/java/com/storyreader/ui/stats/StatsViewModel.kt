@@ -2,6 +2,7 @@ package com.storyreader.ui.stats
 
 import android.app.Application
 import android.content.Context
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
@@ -183,14 +184,14 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setGoalHours(hours: Int) {
-        prefs.edit().putInt(KEY_GOAL_HOURS, hours).apply()
+        prefs.edit { putInt(KEY_GOAL_HOURS, hours) }
         _uiState.value = _uiState.value.copy(
             globalStats = _uiState.value.globalStats?.copy(goalHoursPerYear = hours)
         )
     }
 
     fun setGoalWords(words: Int) {
-        prefs.edit().putInt(KEY_GOAL_WORDS, words).apply()
+        prefs.edit { putInt(KEY_GOAL_WORDS, words) }
         _uiState.value = _uiState.value.copy(
             globalStats = _uiState.value.globalStats?.copy(goalWordsPerYear = words)
         )

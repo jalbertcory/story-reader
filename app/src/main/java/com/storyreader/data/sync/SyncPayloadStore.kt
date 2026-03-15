@@ -29,7 +29,7 @@ class SyncPayloadStore(
     private suspend fun mergeRemoteData(
         remoteJson: JSONObject,
         localPositions: List<ReadingPositionEntity>,
-        localSessions: List<ReadingSessionEntity>
+        _localSessions: List<ReadingSessionEntity>
     ) {
         val localPositionsByBook = localPositions.associateBy { it.bookId }
 

@@ -2,6 +2,7 @@ package com.storyreader.data.sync
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 class GoogleDriveCredentialsManager(
     private val prefs: SharedPreferences
@@ -9,11 +10,11 @@ class GoogleDriveCredentialsManager(
 
     var accountEmail: String?
         get() = prefs.getString(KEY_ACCOUNT_EMAIL, null)
-        set(value) = prefs.edit().putString(KEY_ACCOUNT_EMAIL, value).apply()
+        set(value) = prefs.edit { putString(KEY_ACCOUNT_EMAIL, value) }
 
     var accountDisplayName: String?
         get() = prefs.getString(KEY_ACCOUNT_DISPLAY_NAME, null)
-        set(value) = prefs.edit().putString(KEY_ACCOUNT_DISPLAY_NAME, value).apply()
+        set(value) = prefs.edit { putString(KEY_ACCOUNT_DISPLAY_NAME, value) }
 
     val hasAccount: Boolean
         get() = !accountEmail.isNullOrBlank()
@@ -30,7 +31,7 @@ class GoogleDriveCredentialsManager(
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
     }
 
     companion object {
