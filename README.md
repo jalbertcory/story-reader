@@ -91,6 +91,12 @@ Unit tests run on the JVM using [Robolectric](http://robolectric.org) — no emu
 
 HTML reports are written to `app/build/reports/tests/`.
 
+Instrumentation tests run on a connected emulator or device and cover Compose reader flows that are prone to UI regressions.
+
+```bash
+./gradlew connectedDebugAndroidTest
+```
+
 ## Linting
 
 ```bash

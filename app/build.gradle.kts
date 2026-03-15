@@ -21,6 +21,7 @@ android {
         targetSdk = 36
         versionCode = ciVersionCode.map(String::toInt).orElse(1).get()
         versionName = ciVersionName.orElse("1.0.0").get()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -74,6 +75,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     // Navigation
     implementation(libs.navigation.compose)
@@ -122,5 +124,8 @@ dependencies {
 
     // Instrumented tests
     androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.room.testing)
 }
