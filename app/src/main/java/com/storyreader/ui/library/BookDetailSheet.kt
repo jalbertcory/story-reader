@@ -273,7 +273,12 @@ private fun SessionRow(session: ReadingSessionEntity, dateFormat: SimpleDateForm
 private fun formatDuration(totalSeconds: Int): String {
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+        minutes > 0 -> "${minutes}m ${seconds}s"
+        else -> "${seconds}s"
+    }
 }
 
 private fun formatWordCount(words: Long): String {

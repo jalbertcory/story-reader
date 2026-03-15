@@ -632,8 +632,25 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun ttsPlayPause() {
         when (_ttsState.value) {
-            TtsPlaybackState.PLAYING -> ttsNavigator?.pause()
-            TtsPlaybackState.PAUSED -> ttsNavigator?.play()
+            TtsPlaybackState.PLAYING -> {
+                // Finalize the current TTS session so paused time isn't counted
+                finalizeCurrentSession()
+                ttsNavigator?.pause()
+            }
+            TtsPlaybackState.PAUSED -> {
+                // Start a new TTS session on resume
+                val bookId = currentBookId
+                if (bookId != null) {
+                    viewModelScope.launch {
+                        currentSessionId = readingRepository.startSession(bookId, isTts = true)
+                        sessionStartMs = System.currentTimeMillis()
+                        currentSessionIsTts = true
+                        pageTurnTimestamps.clear()
+                        sessionStartProgression = _currentLocator.value?.locations?.totalProgression?.toFloat() ?: sessionStartProgression
+                    }
+                }
+                ttsNavigator?.play()
+            }
             TtsPlaybackState.STOPPED -> startTts()
         }
     }
@@ -713,6 +730,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val capturedTimestamps = pageTurnTimestamps.toList()
         val capturedStartMs = sessionStartMs
         val capturedStartProgression = sessionStartProgression
+        val capturedIsTts = currentSessionIsTts
         val capturedLocator = _currentLocator.value
         val capturedEndProgression =
             capturedLocator?.locations?.totalProgression?.toFloat() ?: capturedStartProgression
@@ -732,6 +750,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 sessionId = sessionId,
                 pageTurnTimestampsMs = capturedTimestamps,
                 sessionStartMs = capturedStartMs,
+                isTts = capturedIsTts,
                 progressionStart = capturedStartProgression,
                 progressionEnd = capturedEndProgression,
                 bookWordCount = wordCount

@@ -14,6 +14,7 @@ interface ReadingRepository {
         sessionId: Long,
         pageTurnTimestampsMs: List<Long>,
         sessionStartMs: Long,
+        isTts: Boolean = false,
         progressionStart: Float = 0f,
         progressionEnd: Float = 0f,
         bookWordCount: Int = 0
@@ -42,6 +43,7 @@ class ReadingRepositoryImpl(
         sessionId: Long,
         pageTurnTimestampsMs: List<Long>,
         sessionStartMs: Long,
+        isTts: Boolean,
         progressionStart: Float,
         progressionEnd: Float,
         bookWordCount: Int
@@ -49,7 +51,9 @@ class ReadingRepositoryImpl(
         val session = sessionDao.getById(sessionId) ?: return
         val nowMs = System.currentTimeMillis()
         val rawDuration = ((nowMs - sessionStartMs) / 1000).toInt()
-        val adjustedDuration = calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
+        // TTS plays at a constant rate — idle detection doesn't apply, use raw duration
+        val adjustedDuration = if (isTts) rawDuration
+            else calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
         val pagesTurned = pageTurnTimestampsMs.size
         val wordsRead = if (bookWordCount > 0 && progressionEnd > progressionStart)
             ((progressionEnd - progressionStart).coerceAtLeast(0f) * bookWordCount).toInt()
