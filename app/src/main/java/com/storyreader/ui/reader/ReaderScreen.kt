@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -131,12 +132,12 @@ private fun statusBarStyleFor(preferences: EpubPreferences?): StatusBarStyle = w
         text = Color(0xFFFF7722)
     )
     preferences?.theme == Theme.DARK -> StatusBarStyle(
-        bg = Color(0xFF1A1A2E),
-        text = Color(0xCCE0E0E0)
+        bg = Color(0xFF000000),
+        text = Color(0xFFFEFEFE)
     )
     preferences?.theme == Theme.SEPIA -> StatusBarStyle(
-        bg = Color(0xFFF5EBD7),
-        text = Color(0xFF5C4033)
+        bg = Color(0xFFFAF4E8),
+        text = Color(0xFF121212)
     )
     else -> StatusBarStyle(
         bg = Color(0xFFFFFFFF),
@@ -171,6 +172,12 @@ fun ReaderScreen(
         viewModel.applyTextLayoutWorkaround()
     }
 
+    // Apply dark theme to app chrome when reading in dark/night mode
+    val isDarkReadingTheme = preferences.theme == Theme.DARK || preferences.isNightTheme()
+    val readerColorScheme = if (isDarkReadingTheme) darkColorScheme() else MaterialTheme.colorScheme
+    val statusBarStyle = statusBarStyleFor(preferences)
+    val bottomChromeInsets = rememberReaderBottomChromeInsets()
+
     // Always hide system bars in the reader. The reading window must never change size
     // due to system bar show/hide, so we keep them permanently hidden.
     // Users can swipe from edge to reveal system bars transiently if needed.
@@ -183,6 +190,8 @@ fun ReaderScreen(
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.systemBars())
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = statusBarStyle.bg.toArgb()
         }
     }
     DisposableEffect(window) {
@@ -210,12 +219,6 @@ fun ReaderScreen(
             showBrightnessOverlay = false
         }
     }
-
-    // Apply dark theme to app chrome when reading in dark/night mode
-    val isDarkReadingTheme = preferences.theme == Theme.DARK || preferences.isNightTheme()
-    val readerColorScheme = if (isDarkReadingTheme) darkColorScheme() else MaterialTheme.colorScheme
-    val statusBarStyle = statusBarStyleFor(preferences)
-    val bottomChromeInsets = rememberReaderBottomChromeInsets()
 
     MaterialTheme(colorScheme = readerColorScheme) {
         // IMPORTANT: The reading WebView must never change size — any resize causes Readium to
@@ -612,11 +615,11 @@ private fun ReaderStatusBar(
         "${"%.1f".format(it * 100)}%"
     } ?: ""
     val chapterStatus = currentChapterStatus(locator, toc, currentChapterLink)
-    val centerText = listOfNotNull(
+    val chapterLabelTitle = listOfNotNull(
         chapterStatus.label.takeIf { it.isNotBlank() },
-        chapterStatus.title.takeIf { it.isNotBlank() },
-        chapterStatus.progress?.let { "${"%.0f".format(it * 100)}%" }
+        chapterStatus.title.takeIf { it.isNotBlank() }
     ).joinToString("  ")
+    val chapterProgress = chapterStatus.progress?.let { "${"%.0f".format(it * 100)}%" } ?: ""
 
     Row(
         modifier = Modifier
@@ -628,17 +631,30 @@ private fun ReaderStatusBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(progressText, fontSize = 10.sp, color = style.text, modifier = Modifier.weight(1.1f))
-        Text(
-            centerText,
-            fontSize = 10.sp,
-            color = style.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+        Row(
             modifier = Modifier
                 .weight(2.6f)
-                .padding(horizontal = 8.dp)
-        )
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                chapterLabelTitle,
+                fontSize = 10.sp,
+                color = style.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (chapterProgress.isNotEmpty()) {
+                Text(
+                    "  $chapterProgress",
+                    fontSize = 10.sp,
+                    color = style.text,
+                    maxLines = 1
+                )
+            }
+        }
         Text(
             "$currentTime  $batteryPct%",
             fontSize = 10.sp,
