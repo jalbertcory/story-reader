@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,24 @@ private val themeDefault = ThemePreview(Color.White, Color(0xFF1C1B1F), "Default
 private val themeDark = ThemePreview(Color(0xFF1A1A2E), Color(0xFFE0E0E0), "Dark")
 private val themeSepia = ThemePreview(Color(0xFFF5EBD7), Color(0xFF5C4033), "Sepia")
 private val themeNight = ThemePreview(Color.Black, Color(0xFFFF7722), "Night")
+
+object ReaderSettingsTestTags {
+    const val brightnessSlider = "reader_settings_brightness_slider"
+    const val fontSizeSlider = "reader_settings_font_size_slider"
+    const val themeDefault = "reader_settings_theme_default"
+    const val themeDark = "reader_settings_theme_dark"
+    const val themeSepia = "reader_settings_theme_sepia"
+    const val themeNight = "reader_settings_theme_night"
+    const val fontDefault = "reader_settings_font_default"
+    const val fontSerif = "reader_settings_font_serif"
+    const val fontSans = "reader_settings_font_sans"
+    const val fontMono = "reader_settings_font_mono"
+    const val alignLeft = "reader_settings_align_left"
+    const val alignStart = "reader_settings_align_start"
+    const val alignRight = "reader_settings_align_right"
+    const val alignJustify = "reader_settings_align_justify"
+    const val scrollModeSwitch = "reader_settings_scroll_mode_switch"
+}
 
 @OptIn(ExperimentalReadiumApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +126,8 @@ fun ReaderSettingsSheet(
                 Slider(
                     value = brightnessLevel,
                     onValueChange = onBrightnessLevelChange,
-                    valueRange = -1f..1f
+                    valueRange = -1f..1f,
+                    modifier = Modifier.testTag(ReaderSettingsTestTags.brightnessSlider)
                 )
                 Text(
                     "Swipe vertically along the left edge while reading to adjust. Values below 0 use extra dim.",
@@ -143,7 +163,8 @@ fun ReaderSettingsSheet(
                     value = fontSize,
                     onValueChange = { onPreferencesChange(preferences.copy(fontSize = it.toDouble())) },
                     valueRange = 0.5f..2.0f,
-                    steps = 29
+                    steps = 29,
+                    modifier = Modifier.testTag(ReaderSettingsTestTags.fontSizeSlider)
                 )
             }
 
@@ -157,6 +178,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeDefault,
                         selected = !isNight && preferences.theme == null,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeDefault),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(theme = null, backgroundColor = null, textColor = null, publisherStyles = null)
@@ -166,6 +188,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeDark,
                         selected = preferences.theme == Theme.DARK,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeDark),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(theme = Theme.DARK, backgroundColor = null, textColor = null, publisherStyles = null)
@@ -175,6 +198,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeSepia,
                         selected = preferences.theme == Theme.SEPIA,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeSepia),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(theme = Theme.SEPIA, backgroundColor = null, textColor = null, publisherStyles = null)
@@ -184,6 +208,7 @@ fun ReaderSettingsSheet(
                     ThemeButton(
                         preview = themeNight,
                         selected = isNight,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.themeNight),
                         onClick = {
                             onPreferencesChange(
                                 preferences.copy(
@@ -208,12 +233,14 @@ fun ReaderSettingsSheet(
                         label = "Default",
                         composeFontFamily = FontFamily.Default,
                         selected = preferences.fontFamily == null,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontDefault),
                         onClick = { onPreferencesChange(preferences.copy(fontFamily = null)) }
                     )
                     FontButton(
                         label = "Serif",
                         composeFontFamily = FontFamily.Serif,
                         selected = preferences.fontFamily?.name == "serif",
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontSerif),
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("serif")))
                         }
@@ -222,6 +249,7 @@ fun ReaderSettingsSheet(
                         label = "Sans",
                         composeFontFamily = FontFamily.SansSerif,
                         selected = preferences.fontFamily?.name == "sans-serif",
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontSans),
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("sans-serif")))
                         }
@@ -230,6 +258,7 @@ fun ReaderSettingsSheet(
                         label = "Mono",
                         composeFontFamily = FontFamily.Monospace,
                         selected = preferences.fontFamily?.name == "monospace",
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.fontMono),
                         onClick = {
                             onPreferencesChange(preferences.copy(fontFamily = org.readium.r2.navigator.preferences.FontFamily("monospace")))
                         }
@@ -247,24 +276,28 @@ fun ReaderSettingsSheet(
                         icon = Icons.AutoMirrored.Filled.FormatAlignLeft,
                         contentDescription = "Left",
                         selected = preferences.textAlign == ReadiumTextAlign.LEFT || preferences.textAlign == null,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignLeft),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.LEFT, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.Default.FormatAlignCenter,
                         contentDescription = "Start",
                         selected = preferences.textAlign == ReadiumTextAlign.START,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignStart),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.START, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.AutoMirrored.Filled.FormatAlignRight,
                         contentDescription = "Right",
                         selected = preferences.textAlign == ReadiumTextAlign.RIGHT,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignRight),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.RIGHT, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.Default.FormatAlignJustify,
                         contentDescription = "Justify",
                         selected = preferences.textAlign == ReadiumTextAlign.JUSTIFY,
+                        modifier = Modifier.testTag(ReaderSettingsTestTags.alignJustify),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.JUSTIFY, publisherStyles = false)) }
                     )
                 }
@@ -278,7 +311,8 @@ fun ReaderSettingsSheet(
                 Text("Scroll Mode", style = MaterialTheme.typography.labelLarge)
                 Switch(
                     checked = preferences.scroll == true,
-                    onCheckedChange = { onPreferencesChange(preferences.copy(scroll = it)) }
+                    onCheckedChange = { onPreferencesChange(preferences.copy(scroll = it)) },
+                    modifier = Modifier.testTag(ReaderSettingsTestTags.scrollModeSwitch)
                 )
             }
         }
@@ -455,11 +489,13 @@ private fun SliderSetting(
 private fun ThemeButton(
     preview: ThemePreview,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     SelectableSettingTile(
         selected = selected,
         onClick = onClick,
+        modifier = modifier,
         selectedContainerColor = preview.bg,
         unselectedContainerColor = preview.bg,
         selectedBorderColor = MaterialTheme.colorScheme.primary,
@@ -482,11 +518,13 @@ private fun AlignButton(
     icon: ImageVector,
     contentDescription: String,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     SelectableSettingTile(
         selected = selected,
         onClick = onClick,
+        modifier = modifier,
         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
         unselectedContainerColor = MaterialTheme.colorScheme.surface
     ) {
@@ -504,11 +542,13 @@ private fun FontButton(
     label: String,
     composeFontFamily: FontFamily,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     SelectableSettingTile(
         selected = selected,
         onClick = onClick,
+        modifier = modifier,
         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
         unselectedContainerColor = MaterialTheme.colorScheme.surface
     ) {
