@@ -67,26 +67,27 @@ interface ReadingSessionDao {
                SUM(CASE WHEN isTts = 1 THEN durationSeconds ELSE 0 END) as ttsDurationSeconds,
                SUM(CASE WHEN isTts = 1 THEN wordsRead ELSE 0 END) as ttsWordsRead
         FROM reading_sessions
+        WHERE durationSeconds >= 10
         GROUP BY bookId
     """)
     fun getBookSessionStats(): Flow<List<BookSessionStats>>
 
-    @Query("SELECT SUM(durationSeconds) FROM reading_sessions")
+    @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE durationSeconds >= 10")
     fun getTotalReadingSeconds(): Flow<Long?>
 
-    @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE startTime >= :fromMs")
+    @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE durationSeconds >= 10 AND startTime >= :fromMs")
     fun getReadingSecondsSince(fromMs: Long): Flow<Long?>
 
-    @Query("SELECT SUM(wordsRead) FROM reading_sessions")
+    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE durationSeconds >= 10")
     fun getTotalWordsRead(): Flow<Long?>
 
-    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE startTime >= :fromMs")
+    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE durationSeconds >= 10 AND startTime >= :fromMs")
     fun getWordsReadSince(fromMs: Long): Flow<Long?>
 
-    @Query("SELECT COUNT(DISTINCT bookId) FROM reading_sessions")
+    @Query("SELECT COUNT(DISTINCT bookId) FROM reading_sessions WHERE durationSeconds >= 10")
     fun getTotalBooksStarted(): Flow<Int>
 
-    @Query("SELECT COUNT(DISTINCT bookId) FROM reading_sessions WHERE startTime >= :fromMs")
+    @Query("SELECT COUNT(DISTINCT bookId) FROM reading_sessions WHERE durationSeconds >= 10 AND startTime >= :fromMs")
     fun getBooksStartedSince(fromMs: Long): Flow<Int>
 
     @Query("""
@@ -94,7 +95,7 @@ interface ReadingSessionDao {
                SUM(durationSeconds) as totalSeconds,
                SUM(wordsRead) as totalWords
         FROM reading_sessions
-        WHERE startTime >= :yearStartMs AND startTime < :yearEndMs
+        WHERE durationSeconds >= 10 AND startTime >= :yearStartMs AND startTime < :yearEndMs
         GROUP BY month
         ORDER BY month
     """)
@@ -103,14 +104,15 @@ interface ReadingSessionDao {
     @Query("""
         SELECT DISTINCT CAST(strftime('%Y', startTime/1000, 'unixepoch') AS INTEGER) as year
         FROM reading_sessions
+        WHERE durationSeconds >= 10
         ORDER BY year DESC
     """)
     suspend fun getReadingYears(): List<Int>
 
-    @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE startTime >= :fromMs AND startTime < :toMs")
+    @Query("SELECT SUM(durationSeconds) FROM reading_sessions WHERE durationSeconds >= 10 AND startTime >= :fromMs AND startTime < :toMs")
     suspend fun getReadingSecondsBetween(fromMs: Long, toMs: Long): Long?
 
-    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE startTime >= :fromMs AND startTime < :toMs")
+    @Query("SELECT SUM(wordsRead) FROM reading_sessions WHERE durationSeconds >= 10 AND startTime >= :fromMs AND startTime < :toMs")
     suspend fun getWordsReadBetween(fromMs: Long, toMs: Long): Long?
 
     @Query("SELECT * FROM reading_sessions WHERE bookId = :bookId AND startTime = :startTime LIMIT 1")
