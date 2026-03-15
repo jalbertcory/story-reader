@@ -1,6 +1,5 @@
 package com.storyreader.ui.reader
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,9 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
@@ -45,6 +42,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.storyreader.ui.components.SelectableSettingTile
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -459,28 +457,23 @@ private fun ThemeButton(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-    Surface(
+    SelectableSettingTile(
+        selected = selected,
         onClick = onClick,
-        modifier = Modifier
-            .width(72.dp)
-            .border(2.dp, borderColor, RoundedCornerShape(8.dp)),
-        color = preview.bg,
-        shape = RoundedCornerShape(8.dp),
+        selectedContainerColor = preview.bg,
+        unselectedContainerColor = preview.bg,
+        selectedBorderColor = MaterialTheme.colorScheme.primary,
+        unselectedBorderColor = Color.Transparent,
+        unselectedBorderWidth = 2.dp,
         shadowElevation = if (selected) 4.dp else 1.dp
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
-        ) {
-            Text(
-                text = preview.label,
-                color = preview.text,
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 1
-            )
-        }
+        Text(
+            text = preview.label,
+            color = preview.text,
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
     }
 }
 
@@ -491,30 +484,18 @@ private fun AlignButton(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    Surface(
+    SelectableSettingTile(
+        selected = selected,
         onClick = onClick,
-        modifier = Modifier
-            .width(72.dp)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(8.dp)
-            ),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(8.dp)
+        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        unselectedContainerColor = MaterialTheme.colorScheme.surface
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
-                tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
@@ -525,30 +506,18 @@ private fun FontButton(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    Surface(
+    SelectableSettingTile(
+        selected = selected,
         onClick = onClick,
-        modifier = Modifier
-            .width(72.dp)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(8.dp)
-            ),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(8.dp)
+        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        unselectedContainerColor = MaterialTheme.colorScheme.surface
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
-        ) {
-            Text(
-                text = label,
-                fontFamily = composeFontFamily,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 1
-            )
-        }
+        Text(
+            text = label,
+            fontFamily = composeFontFamily,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
     }
 }

@@ -13,9 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -37,13 +35,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.db.entity.ReadingSessionEntity
-import java.io.File
+import com.storyreader.ui.components.BookCoverThumbnail
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,31 +66,15 @@ fun BookDetailSheet(
             // Book header
             item {
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    if (book.coverUri != null) {
-                        AsyncImage(
-                            model = File(book.coverUri),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .width(72.dp)
-                                .height(104.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .width(72.dp)
-                                .height(104.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Book,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    BookCoverThumbnail(
+                        coverUri = book.coverUri,
+                        title = book.title,
+                        width = 72.dp,
+                        height = 104.dp,
+                        cornerRadius = 6.dp,
+                        placeholderIconSize = 40.dp,
+                        contentDescription = null
+                    )
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(book.title, style = MaterialTheme.typography.titleLarge)
