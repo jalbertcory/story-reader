@@ -81,6 +81,7 @@ private const val KEY_FONT_FAMILY = "font_family"
 private const val KEY_IS_NIGHT = "is_night_theme"
 private const val KEY_SCROLL = "scroll_mode"
 private const val KEY_TEXT_ALIGN = "text_align"
+private const val KEY_BRIGHTNESS_LEVEL = "brightness_level"
 private const val KEY_TTS_PREFS = "tts_prefs_json"
 private const val KEY_TTS_ENGINE = "tts_engine"
 private const val DEFAULT_TTS_SPEED = 1.5
@@ -101,6 +102,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _preferences = MutableStateFlow(loadSavedPreferences())
     val preferences: StateFlow<EpubPreferences> = _preferences.asStateFlow()
+
+    private val _brightnessLevel = MutableStateFlow(loadSavedBrightnessLevel())
+    val brightnessLevel: StateFlow<Float> = _brightnessLevel.asStateFlow()
 
     private val _ttsPreferences = MutableStateFlow(loadSavedTtsPreferences())
     private var selectedTtsEnginePackageName: String? = prefStore.getString(KEY_TTS_ENGINE, null)
@@ -164,6 +168,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             .getOrDefault(AndroidTtsPreferences(speed = DEFAULT_TTS_SPEED))
     }
 
+    private fun loadSavedBrightnessLevel(): Float =
+        ReaderBrightness.clamp(
+            if (prefStore.contains(KEY_BRIGHTNESS_LEVEL)) {
+                prefStore.getFloat(KEY_BRIGHTNESS_LEVEL, 1f)
+            } else {
+                1f
+            }
+        )
+
     private fun savePreferences(prefs: EpubPreferences) {
         val isNight = prefs.backgroundColor?.int == 0xFF000000.toInt()
         prefStore.edit().apply {
@@ -194,6 +207,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         prefStore.edit()
             .putString(KEY_TTS_PREFS, ttsPreferencesSerializer.serialize(_ttsPreferences.value))
             .putString(KEY_TTS_ENGINE, selectedTtsEnginePackageName)
+            .apply()
+    }
+
+    private fun saveBrightnessLevel(level: Float) {
+        prefStore.edit()
+            .putFloat(KEY_BRIGHTNESS_LEVEL, ReaderBrightness.clamp(level))
             .apply()
     }
 
@@ -395,6 +414,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val updated = normalizePreferences(transform(_preferences.value))
         _preferences.value = updated
         savePreferences(updated)
+    }
+
+    fun setBrightnessLevel(level: Float) {
+        val updated = ReaderBrightness.clamp(level)
+        _brightnessLevel.value = updated
+        saveBrightnessLevel(updated)
+    }
+
+    fun adjustBrightnessByDrag(dragFraction: Float) {
+        setBrightnessLevel(ReaderBrightness.adjustByDrag(_brightnessLevel.value, dragFraction))
     }
 
     private fun normalizePreferences(preferences: EpubPreferences): EpubPreferences {
