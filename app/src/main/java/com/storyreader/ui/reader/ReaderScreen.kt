@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -37,15 +39,12 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -146,7 +145,7 @@ private fun statusBarStyleFor(preferences: EpubPreferences?): StatusBarStyle = w
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalReadiumApi::class)
+@OptIn(ExperimentalReadiumApi::class)
 @Composable
 fun ReaderScreen(
     bookId: String,
@@ -259,7 +258,7 @@ fun ReaderScreen(
             }
 
             // ── Top bar overlay (hidden in fullscreen or during TTS) ─────────────
-            // Hidden when bars are toggled off OR when TTS is active (to maintain reading area parity)
+            // Slim title bar matching reading theme colors
             AnimatedVisibility(
                 visible = showBars && ttsState == TtsPlaybackState.STOPPED,
                 enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -268,36 +267,35 @@ fun ReaderScreen(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
             ) {
-                TopAppBar(
-                    modifier = Modifier.statusBarsPadding(),
-                    title = {
-                        Text(
-                            text = uiState.publication?.metadata?.title ?: "",
-                            maxLines = 1
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(statusBarStyle.bg.copy(alpha = 0.92f))
+                        .statusBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = statusBarStyle.text,
+                            modifier = Modifier.size(20.dp)
                         )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        if (uiState.publication != null) {
-                            IconButton(onClick = { showToc = true }) {
-                                Icon(
-                                    @Suppress("DEPRECATION") Icons.Default.FormatListBulleted,
-                                    contentDescription = "Table of Contents"
-                                )
-                            }
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = readerColorScheme.surface.copy(alpha = 0.92f)
+                    }
+                    Text(
+                        text = uiState.publication?.metadata?.title ?: "",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = statusBarStyle.text,
+                        modifier = Modifier.padding(start = 4.dp)
                     )
-                )
+                }
             }
 
             // ── Bottom overlay (action bar / TTS controls + status bar) ─────────
@@ -320,6 +318,19 @@ fun ReaderScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (uiState.publication != null) {
+                            IconButton(
+                                onClick = { showToc = true },
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.FormatListBulleted,
+                                    contentDescription = "Table of Contents",
+                                    tint = statusBarStyle.text,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
                         IconButton(
                             onClick = { viewModel.startTts() },
                             modifier = Modifier.size(42.dp)
@@ -329,6 +340,17 @@ fun ReaderScreen(
                                 contentDescription = "Start TTS",
                                 tint = statusBarStyle.text,
                                 modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = { showSettings = true },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = statusBarStyle.text,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
