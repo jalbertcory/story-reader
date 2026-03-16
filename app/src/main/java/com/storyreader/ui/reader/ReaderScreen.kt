@@ -284,14 +284,14 @@ fun ReaderScreen(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = statusBarStyle.text,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                     Text(
                         text = uiState.publication?.metadata?.title ?: "",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         color = statusBarStyle.text,
                         modifier = Modifier.padding(start = 4.dp)
                     )
