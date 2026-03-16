@@ -320,6 +320,22 @@ fun ReaderScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+<<<<<<< Updated upstream
+=======
+                        if (uiState.publication != null) {
+                            IconButton(
+                                onClick = { showToc = true },
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.FormatListBulleted,
+                                    contentDescription = "Table of Contents",
+                                    tint = statusBarStyle.text,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+>>>>>>> Stashed changes
                         IconButton(
                             onClick = { viewModel.startTts() },
                             modifier = Modifier.size(42.dp)
@@ -539,7 +555,18 @@ private fun TtsControlsBar(
                 Icons.Default.SkipPrevious,
                 contentDescription = "Previous page",
                 tint = style.text,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(25.dp)
+            )
+        }
+        IconButton(
+            onClick = onSettings,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.Settings,
+                contentDescription = "TTS Settings",
+                tint = style.text,
+                modifier = Modifier.size(20.dp)
             )
         }
         IconButton(
@@ -561,7 +588,7 @@ private fun TtsControlsBar(
                 Icons.Default.Stop,
                 contentDescription = "Stop TTS",
                 tint = style.text,
-                modifier = Modifier.size(21.dp)
+                modifier = Modifier.size(25.dp)
             )
         }
         IconButton(
@@ -572,18 +599,7 @@ private fun TtsControlsBar(
                 Icons.Default.SkipNext,
                 contentDescription = "Next page",
                 tint = style.text,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-        IconButton(
-            onClick = onSettings,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                Icons.Default.Settings,
-                contentDescription = "TTS Settings",
-                tint = style.text,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(25.dp)
             )
         }
     }
