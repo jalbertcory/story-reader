@@ -25,9 +25,17 @@ enum class BookImportSource(
     NEXTCLOUD("From Nextcloud", requiresCloudDivider = true)
 }
 
+enum class LibrarySortOption(val label: String) {
+    LAST_READ("Last Read"),
+    TITLE("Title"),
+    AUTHOR("Author"),
+    PROGRESS("Progress")
+}
+
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
     val lastReadTimes: Map<String, Long> = emptyMap(),
+    val sortOption: LibrarySortOption = LibrarySortOption.LAST_READ,
     val isLoading: Boolean = true,
     val error: String? = null,
     val hasNextcloudCredentials: Boolean = false,
@@ -47,16 +55,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
+    private val _sortOption = MutableStateFlow(LibrarySortOption.LAST_READ)
+
     init {
         viewModelScope.launch {
             combine(
                 repository.observeAll(),
-                sessionDao.getLastReadTimes()
-            ) { books, lastReads ->
+                sessionDao.getLastReadTimes(),
+                _sortOption
+            ) { books, lastReads, sort ->
                 val lastReadMap = lastReads.associate { it.bookId to it.lastReadAt }
+                val sortedBooks = sortBooks(books, lastReadMap, sort)
                 _uiState.value.copy(
-                    books = books,
+                    books = sortedBooks,
                     lastReadTimes = lastReadMap,
+                    sortOption = sort,
                     isLoading = false,
                     hasNextcloudCredentials = app.credentialsManager.hasCredentials,
                     importSources = buildImportSources(app.credentialsManager.hasCredentials)
@@ -65,6 +78,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = state
             }
         }
+    }
+
+    fun setSortOption(option: LibrarySortOption) {
+        _sortOption.value = option
+    }
+
+    private fun sortBooks(
+        books: List<BookEntity>,
+        lastReadTimes: Map<String, Long>,
+        sort: LibrarySortOption
+    ): List<BookEntity> = when (sort) {
+        LibrarySortOption.LAST_READ -> books.sortedByDescending { lastReadTimes[it.bookId] ?: 0L }
+        LibrarySortOption.TITLE -> books.sortedBy { it.title.lowercase() }
+        LibrarySortOption.AUTHOR -> books.sortedBy { it.author.lowercase() }
+        LibrarySortOption.PROGRESS -> books.sortedByDescending { it.totalProgression }
     }
 
     fun refreshCredentials() {
