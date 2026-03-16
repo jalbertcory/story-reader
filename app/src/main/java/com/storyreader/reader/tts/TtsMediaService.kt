@@ -5,10 +5,13 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.net.toUri
 import androidx.annotation.OptIn
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -24,6 +27,7 @@ import com.google.common.util.concurrent.SettableFuture
 import com.storyreader.StoryReaderApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -31,8 +35,12 @@ import org.readium.navigator.media.tts.AndroidTtsNavigator
 import org.readium.navigator.media.tts.android.AndroidTtsPreferences
 import org.readium.navigator.media.tts.android.AndroidTtsPreferencesSerializer
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.indexOfFirstWithHref
+import org.readium.r2.shared.publication.services.content.content
+import kotlin.math.abs
 
 /**
  * MediaLibraryService hosting the TTS playback session. This allows Android to show
@@ -50,21 +58,59 @@ class TtsMediaService : MediaLibraryService() {
     private var standaloneTtsNavigator: AndroidTtsNavigator? = null
     private var standalonePublication: Publication? = null
     private var standaloneBookId: String? = null
+    private var standaloneSessionId: Long? = null
+    private var standaloneSessionStartMs: Long = 0L
+    private var standaloneSessionStartProgression: Float = 0f
+    private var standaloneCurrentLocator: Locator? = null
+    private var standaloneLastSaveMs: Long = 0L
+    private var standaloneLocationJob: Job? = null
+    private var standaloneStartupJob: Job? = null
+    private var standaloneMetadataPlayer: NowPlayingPlayer? = null
+    private var standaloneCoverArt: ByteArray? = null
 
     // Stub player used when no TTS is active (allows session to exist for browsing)
     private val stubPlayer by lazy { StubPlayer(Looper.getMainLooper()) }
 
+    /**
+     * Callback for when Android Auto requests TTS playback. If a [ReaderViewModel] is
+     * active and registers this callback, it can handle the request directly (with
+     * highlight sync) instead of falling back to standalone mode.
+     */
+    fun interface TtsPlaybackRequestListener {
+        /** Called on the main thread. Return true if handled. */
+        fun onTtsPlaybackRequested(bookId: String): Boolean
+    }
+
     inner class LocalBinder : android.os.Binder() {
+
+        /** True when Android Auto is driving TTS playback independently. */
+        val isStandaloneTtsActive: Boolean get() = standaloneTtsNavigator != null
+
+        /**
+         * Register a listener for Android Auto TTS requests. When AA starts a book
+         * that the phone UI already has open, the listener can start TTS through the
+         * normal ViewModel flow (with highlight sync) instead of standalone mode.
+         */
+        var ttsPlaybackRequestListener: TtsPlaybackRequestListener? = null
+
+        private var sessionMetadataPlayer: NowPlayingPlayer? = null
 
         fun openSession(navigator: AndroidTtsNavigator) {
             closeSession()
             // Clear any standalone playback
             cleanupStandalonePlayback()
-            val player = navigator.asMedia3Player()
-            createOrUpdateSession(player)
+            val metadataPlayer = NowPlayingPlayer(navigator.asMedia3Player())
+            sessionMetadataPlayer = metadataPlayer
+            createOrUpdateSession(metadataPlayer)
+        }
+
+        /** Push updated now-playing metadata (chapter name, progress, cover). */
+        fun updateSessionMetadata(metadata: MediaMetadata) {
+            sessionMetadataPlayer?.updateMetadata(metadata)
         }
 
         fun closeSession() {
+            sessionMetadataPlayer = null
             releaseSession()
         }
     }
@@ -72,6 +118,22 @@ class TtsMediaService : MediaLibraryService() {
     private val binder = LocalBinder()
 
     private val libraryCallback = object : MediaLibrarySession.Callback {
+
+        // Explicitly accept all controllers (including Android Auto) with the default session and
+        // library commands plus all available player commands. Without this, Media3's default
+        // grants Player.Commands.EMPTY to external controllers, which causes Android Auto to treat
+        // the app as an invalid media source and hide it from the apps carousel.
+        @OptIn(UnstableApi::class)
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult =
+            MediaSession.ConnectionResult.accept(
+                MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS,
+                Player.Commands.Builder().addAllCommands().build()
+            )
+
+        @OptIn(UnstableApi::class)
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
@@ -88,7 +150,15 @@ class TtsMediaService : MediaLibraryService() {
                         .build()
                 )
                 .build()
-            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
+            // Android Auto requires content style extras to display and recognise the app as a
+            // valid media source. Without CONTENT_STYLE_SUPPORTED the app may be hidden entirely.
+            val extras = Bundle().apply {
+                putBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true)
+                putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1) // LIST
+                putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)  // LIST
+            }
+            val rootParams = LibraryParams.Builder().setExtras(extras).build()
+            return Futures.immediateFuture(LibraryResult.ofItem(root, rootParams))
         }
 
         override fun onGetChildren(
@@ -110,17 +180,23 @@ class TtsMediaService : MediaLibraryService() {
                     val app = application as StoryReaderApplication
                     val books = app.database.bookDao().getAllOnce()
                     val items = books.map { book ->
+                        val metaBuilder = MediaMetadata.Builder()
+                            .setTitle(book.title)
+                            .setArtist(book.author)
+                            .setIsPlayable(true)
+                            .setIsBrowsable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                        book.coverUri?.let { path ->
+                            try {
+                                metaBuilder.setArtworkData(
+                                    java.io.File(path).readBytes(),
+                                    MediaMetadata.PICTURE_TYPE_FRONT_COVER
+                                )
+                            } catch (_: Exception) { /* cover file missing */ }
+                        }
                         MediaItem.Builder()
                             .setMediaId(book.bookId)
-                            .setMediaMetadata(
-                                MediaMetadata.Builder()
-                                    .setTitle(book.title)
-                                    .setArtist(book.author)
-                                    .setIsPlayable(true)
-                                    .setIsBrowsable(false)
-                                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                                    .build()
-                            )
+                            .setMediaMetadata(metaBuilder.build())
                             .build()
                     }
                     future.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
@@ -141,16 +217,58 @@ class TtsMediaService : MediaLibraryService() {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val bookId = mediaItems.firstOrNull()?.mediaId
                 ?: return Futures.immediateFailedFuture(IllegalArgumentException("No book"))
-            val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
-            serviceScope.launch {
-                startStandalonePlayback(bookId)
-                future.set(
+
+            Log.d(TAG, "onSetMediaItems: bookId=$bookId, current=$standaloneBookId")
+
+            // If the phone UI has this book open, let the ViewModel handle TTS
+            // (gives highlight sync, visual page-turning, unified position tracking).
+            val handled = binder.ttsPlaybackRequestListener?.onTtsPlaybackRequested(bookId) == true
+            if (handled) {
+                Log.d(TAG, "onSetMediaItems: delegated to ViewModel")
+                return Futures.immediateFuture(
                     MediaSession.MediaItemsWithStartPosition(
                         mediaItems, startIndex, startPositionMs
                     )
                 )
             }
-            return future
+
+            // Cancel any in-flight startup so two coroutines don't race
+            standaloneStartupJob?.cancel()
+            this@TtsMediaService.mediaSession?.setPlayer(stubPlayer)
+            cleanupStandalonePlayback()
+
+            standaloneStartupJob = serviceScope.launch {
+                startStandalonePlayback(bookId)
+            }
+
+            // Resolve immediately — actual playback starts inside the coroutine.
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(
+                    mediaItems, startIndex, startPositionMs
+                )
+            )
+        }
+
+        @OptIn(UnstableApi::class)
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            Log.d(TAG, "onPlaybackResumption: current=$standaloneBookId")
+            // When AA resumes after a pause, re-start the last book if we have one
+            val bookId = standaloneBookId
+            if (bookId != null && standaloneTtsNavigator != null) {
+                standaloneTtsNavigator?.play()
+                return Futures.immediateFuture(
+                    MediaSession.MediaItemsWithStartPosition(
+                        listOf(MediaItem.Builder().setMediaId(bookId).build()),
+                        0, 0
+                    )
+                )
+            }
+            return Futures.immediateFailedFuture(
+                IllegalStateException("No book to resume")
+            )
         }
     }
 
@@ -168,38 +286,43 @@ class TtsMediaService : MediaLibraryService() {
 
     override fun onDestroy() {
         cleanupStandalonePlayback()
-        releaseSession()
-        serviceScope.cancel()
-        super.onDestroy()
-    }
-
-    private fun createOrUpdateSession(player: Player) {
-        mediaSession?.let {
-            removeSession(it)
-            it.release()
-        }
-        val session = MediaLibrarySession.Builder(this, player, libraryCallback)
-            .setSessionActivity(createReaderIntent())
-            .build()
-        mediaSession = session
-        addSession(session)
-    }
-
-    private fun releaseSession() {
         mediaSession?.let {
             removeSession(it)
             it.release()
         }
         mediaSession = null
-        // Re-create stub session for browsing
-        if (standaloneTtsNavigator == null) {
-            createOrUpdateSession(stubPlayer)
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun createOrUpdateSession(player: Player) {
+        val existing = mediaSession
+        if (existing != null) {
+            // Swap the player in-place — keeps Android Auto connected and is safe to call
+            // from within active session callbacks (e.g. onSetMediaItems). Releasing and
+            // recreating the session here would crash because the callback's pending future
+            // still holds a reference to the old session.
+            existing.setPlayer(player)
+        } else {
+            val session = MediaLibrarySession.Builder(this, player, libraryCallback)
+                .setSessionActivity(createReaderIntent())
+                .build()
+            mediaSession = session
+            addSession(session)
         }
     }
 
-    private suspend fun startStandalonePlayback(bookId: String) {
-        cleanupStandalonePlayback()
+    @OptIn(UnstableApi::class)
+    private fun releaseSession() {
+        // Reset to stub player rather than releasing the session — keeps Android Auto
+        // connected for browsing after TTS playback ends.
+        mediaSession?.setPlayer(stubPlayer)
+    }
 
+    @OptIn(UnstableApi::class)
+    private suspend fun startStandalonePlayback(bookId: String) {
+        Log.d(TAG, "startStandalonePlayback: bookId=$bookId")
         val app = application as StoryReaderApplication
         val uri = bookId.toUri()
         val publication = app.epubRepository.openPublication(uri).getOrNull() ?: return
@@ -215,32 +338,200 @@ class TtsMediaService : MediaLibraryService() {
         val prefs = loadTtsPreferences()
         val enginePkg = loadTtsEngine()
 
+        // Enhance the locator so TTS can position within the chapter (needs cssSelector)
+        val ttsLocator = locator?.let { enhanceLocatorForTts(publication, it) }
+
         // Initialize and start TTS
         val manager = TtsManager(application as Application)
         manager.initialize(publication, enginePkg)
-        val nav = manager.start(locator, prefs) ?: return
+        val nav = manager.start(ttsLocator, prefs) ?: return
 
         standaloneTtsManager = manager
         standaloneTtsNavigator = nav
         standalonePublication = publication
         standaloneBookId = bookId
+        val bookEntity = app.database.bookDao().getByIdOnce(bookId)
+        standaloneCoverArt = bookEntity?.coverUri?.let { path ->
+            try { java.io.File(path).readBytes() } catch (_: Exception) { null }
+        }
 
-        // Create session with TTS player
-        createOrUpdateSession(nav.asMedia3Player())
+        // Create session with a wrapper that allows dynamic metadata updates
+        val metadataPlayer = NowPlayingPlayer(nav.asMedia3Player())
+        standaloneMetadataPlayer = metadataPlayer
+        createOrUpdateSession(metadataPlayer)
 
-        // Start a reading session for stats
-        app.readingRepository.startSession(bookId, isTts = true)
+        // Start a reading session for stats and record start info for finalization on stop
+        standaloneSessionId = app.readingRepository.startSession(bookId, isTts = true)
+        standaloneSessionStartMs = System.currentTimeMillis()
+        standaloneSessionStartProgression = locator?.locations?.totalProgression?.toFloat() ?: 0f
+        standaloneCurrentLocator = locator
+
+        // Collect location updates so we can persist position periodically and update
+        // the now-playing metadata (chapter name + progress) on Android Auto.
+        standaloneLocationJob = serviceScope.launch {
+            nav.location.collect { location ->
+                val utteranceLoc = location.utteranceLocator
+                standaloneCurrentLocator = utteranceLoc
+                saveStandalonePositionIfDue(bookId, utteranceLoc)
+                updateNowPlayingMetadata(
+                    publication, nav,
+                    chapterHref = location.href,
+                    utteranceLocator = location.utteranceLocator
+                )
+            }
+        }
 
         nav.play()
     }
 
     private fun cleanupStandalonePlayback() {
+        Log.d(TAG, "cleanupStandalonePlayback: bookId=$standaloneBookId, hasNav=${standaloneTtsNavigator != null}")
+        standaloneStartupJob?.cancel()
+        standaloneStartupJob = null
+        standaloneLocationJob?.cancel()
+        standaloneLocationJob = null
+
+        // Capture state before clearing fields
+        val bookId = standaloneBookId
+        val locator = standaloneCurrentLocator
+        val sessionId = standaloneSessionId
+        val startMs = standaloneSessionStartMs
+        val startProgression = standaloneSessionStartProgression
+
+        standaloneTtsNavigator?.pause()
         standaloneTtsNavigator?.close()
         standaloneTtsNavigator = null
         standaloneTtsManager?.stop()
         standaloneTtsManager = null
         standalonePublication = null
         standaloneBookId = null
+        standaloneSessionId = null
+        standaloneCurrentLocator = null
+        standaloneMetadataPlayer = null
+        standaloneCoverArt = null
+        standaloneSessionStartMs = 0L
+        standaloneSessionStartProgression = 0f
+        standaloneLastSaveMs = 0L
+
+        // Persist final position so the phone picks up exactly where Android Auto stopped.
+        // Use a standalone scope so this survives service destruction / serviceScope cancellation.
+        if (locator != null && bookId != null) {
+            CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+                val app = application as StoryReaderApplication
+                app.readingRepository.savePosition(bookId, locator.toJSON().toString())
+                app.bookRepository.updateProgression(
+                    bookId,
+                    locator.locations.totalProgression?.toFloat() ?: 0f
+                )
+                if (sessionId != null) {
+                    val wordCount = app.bookRepository.getWordCount(bookId)
+                    app.readingRepository.finalizeSession(
+                        sessionId = sessionId,
+                        pageTurnTimestampsMs = emptyList(),
+                        sessionStartMs = startMs,
+                        isTts = true,
+                        progressionStart = startProgression,
+                        progressionEnd = locator.locations.totalProgression?.toFloat()
+                            ?: startProgression,
+                        bookWordCount = wordCount
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Android Auto's now-playing screen shows three lines: title, artist, album.
+     * We use them as: "Chapter Name · 42%" / author / "58% · Book Title"
+     * where the title % is chapter-local and the album % is book-wide.
+     */
+    private fun updateNowPlayingMetadata(
+        publication: Publication,
+        nav: AndroidTtsNavigator,
+        chapterHref: org.readium.r2.shared.util.Url,
+        utteranceLocator: Locator
+    ) {
+        val player = standaloneMetadataPlayer ?: return
+        val chapterIndex = nav.readingOrder.items.indexOfFirst { it.href == chapterHref }
+            .takeIf { it >= 0 } ?: return
+        val hrefStr = chapterHref.toString()
+        val chapterTitle = flattenTocLinks(publication.tableOfContents)
+            .lastOrNull { hrefStr.startsWith(it.href.toString().substringBefore("#")) }
+            ?.title
+            ?: "Chapter ${chapterIndex + 1}"
+        val chapterPercent = ((utteranceLocator.locations.progression ?: 0.0) * 100).toInt()
+        val bookPercent = ((utteranceLocator.locations.totalProgression ?: 0.0) * 100).toInt()
+        val bookTitle = publication.metadata.title
+        val author = publication.metadata.authors.firstOrNull()?.name
+
+        val metaBuilder = MediaMetadata.Builder()
+            .setTitle("$chapterTitle · $chapterPercent%")
+            .setArtist(author)
+            .setAlbumTitle("$bookPercent% · $bookTitle")
+            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+            .setIsPlayable(true)
+            .setIsBrowsable(false)
+        standaloneCoverArt?.let { metaBuilder.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
+        val metadata = metaBuilder.build()
+
+        player.updateMetadata(metadata)
+    }
+
+    /**
+     * If the locator lacks a cssSelector (e.g. saved from the visual epub reader), Readium's
+     * HtmlResourceContentIterator cannot position within the chapter and falls back to position 0.
+     * Work around this by iterating the publication content to find the element whose
+     * totalProgression is closest to the saved value — its locator will carry a cssSelector.
+     */
+    private suspend fun enhanceLocatorForTts(
+        publication: Publication,
+        locator: Locator
+    ): Locator {
+        if (locator.locations.otherLocations.containsKey("cssSelector")) return locator
+
+        val targetProgression = locator.locations.totalProgression ?: return locator
+        val readingOrderIndex =
+            publication.readingOrder.indexOfFirstWithHref(locator.href) ?: return locator
+        val link = publication.readingOrder[readingOrderIndex]
+        val chapterLocator = publication.locatorFromLink(link) ?: return locator
+
+        val content = publication.content(chapterLocator) ?: return locator
+        val iterator = content.iterator()
+
+        var bestLocator: Locator? = null
+        var bestDiff = Double.MAX_VALUE
+
+        while (iterator.hasNext()) {
+            val element = iterator.next()
+            if (element.locator.href != locator.href) break
+            val elementProgression = element.locator.locations.totalProgression ?: continue
+            val diff = abs(elementProgression - targetProgression)
+            if (diff < bestDiff) {
+                bestDiff = diff
+                bestLocator = element.locator
+            }
+            if (elementProgression > targetProgression) break
+        }
+
+        return bestLocator ?: locator
+    }
+
+    /**
+     * Debounced position save during standalone TTS — writes at most every 5 seconds
+     * so the position survives app kill without hammering the DB.
+     */
+    private fun saveStandalonePositionIfDue(bookId: String, locator: Locator) {
+        val now = System.currentTimeMillis()
+        if (now - standaloneLastSaveMs < 5_000) return
+        standaloneLastSaveMs = now
+        serviceScope.launch {
+            val app = application as StoryReaderApplication
+            app.readingRepository.savePosition(bookId, locator.toJSON().toString())
+            app.bookRepository.updateProgression(
+                bookId,
+                locator.locations.totalProgression?.toFloat() ?: 0f
+            )
+        }
     }
 
     private fun loadTtsPreferences(): AndroidTtsPreferences {
@@ -256,6 +547,9 @@ class TtsMediaService : MediaLibraryService() {
         return prefStore.getString("tts_engine", null)
     }
 
+    private fun flattenTocLinks(links: List<Link>): List<Link> =
+        links.flatMap { link -> listOf(link) + flattenTocLinks(link.children) }
+
     private fun createReaderIntent(): PendingIntent {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                 PendingIntent.FLAG_IMMUTABLE
@@ -264,6 +558,7 @@ class TtsMediaService : MediaLibraryService() {
     }
 
     companion object {
+        private const val TAG = "TtsMediaService"
         const val ACTION_BIND = "com.storyreader.reader.tts.TtsMediaService"
 
         suspend fun bind(application: Application): LocalBinder? {
@@ -286,12 +581,65 @@ class TtsMediaService : MediaLibraryService() {
 }
 
 /**
+ * Wraps the TTS media3 player to allow dynamic metadata updates. Android Auto reads metadata from
+ * [Player.getMediaMetadata]; by overriding it we can show the current chapter name and progress
+ * percentage on the now-playing screen without modifying Readium's internal TtsSessionAdapter.
+ */
+@OptIn(UnstableApi::class)
+private class NowPlayingPlayer(player: Player) : ForwardingPlayer(player) {
+
+    private var customMetadata: MediaMetadata? = null
+    private val metadataListeners = mutableListOf<Player.Listener>()
+
+    override fun addListener(listener: Player.Listener) {
+        metadataListeners.add(listener)
+        super.addListener(listener)
+    }
+
+    override fun removeListener(listener: Player.Listener) {
+        metadataListeners.remove(listener)
+        super.removeListener(listener)
+    }
+
+    override fun getMediaMetadata(): MediaMetadata {
+        return customMetadata ?: super.getMediaMetadata()
+    }
+
+    fun updateMetadata(metadata: MediaMetadata) {
+        if (metadata == customMetadata) return
+        customMetadata = metadata
+        for (listener in metadataListeners.toList()) {
+            listener.onMediaMetadataChanged(metadata)
+        }
+    }
+}
+
+/**
  * Minimal player implementation for session initialization before TTS is started.
- * Allows the MediaLibrarySession to exist for browse-only scenarios.
+ * Exposes the basic commands Android Auto expects so it treats the app as a valid
+ * media source while no TTS session is active. Actual playback is initiated via
+ * onSetMediaItems in the session callback, so these handlers are intentional no-ops.
  */
 @OptIn(UnstableApi::class)
 private class StubPlayer(looper: Looper) : SimpleBasePlayer(looper) {
     override fun getState(): State = State.Builder()
-        .setAvailableCommands(Player.Commands.EMPTY)
+        .setAvailableCommands(
+            Player.Commands.Builder()
+                .add(Player.COMMAND_PLAY_PAUSE)
+                .add(Player.COMMAND_STOP)
+                .add(Player.COMMAND_SET_MEDIA_ITEM)
+                .add(Player.COMMAND_CHANGE_MEDIA_ITEMS)
+                .build()
+        )
         .build()
+
+    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> =
+        Futures.immediateVoidFuture()
+
+    override fun handleStop(): ListenableFuture<*> = Futures.immediateVoidFuture()
+    override fun handleSetMediaItems(
+        mediaItems: List<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long
+    ): ListenableFuture<*> = Futures.immediateVoidFuture()
 }

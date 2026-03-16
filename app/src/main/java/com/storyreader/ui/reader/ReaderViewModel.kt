@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import androidx.media3.common.MediaMetadata
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
@@ -240,6 +241,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var savePositionJob: Job? = null
     private var ttsCatalogJob: Job? = null
     private var currentBookId: String? = null
+    private var currentCoverArt: ByteArray? = null
     private var currentSessionId: Long? = null
     private var sessionStartMs: Long = 0L
     private var sessionStartProgression: Float = 0f
@@ -284,6 +286,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     pageTurnTimestamps.clear()
                     ttsManager.initialize(publication, selectedTtsEnginePackageName)
                     refreshTtsCatalog()
+                    val bookEntity = app.database.bookDao().getByIdOnce(bookId)
+                    currentCoverArt = bookEntity?.coverUri?.let { path ->
+                        try { java.io.File(path).readBytes() } catch (_: Exception) { null }
+                    }
+                    bindTtsServiceForAutoRequests(bookId)
                 }
                 .onFailure { e ->
                     _uiState.value = ReaderUiState(
@@ -308,14 +315,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             lastLocatorHref = normalizedHref
             resolveCurrentChapter(locator)
         }
-        savePositionJob?.cancel()
-        savePositionJob = viewModelScope.launch {
-            delay(300)
-            readingRepository.savePosition(bookId, locator.toJSON().toString())
-            bookRepository.updateProgression(
-                bookId,
-                locator.locations.totalProgression?.toFloat() ?: 0f
-            )
+        // Don't overwrite TTS position when Android Auto is driving playback
+        if (ttsServiceBinder?.isStandaloneTtsActive != true) {
+            savePositionJob?.cancel()
+            savePositionJob = viewModelScope.launch {
+                delay(300)
+                readingRepository.savePosition(bookId, locator.toJSON().toString())
+                bookRepository.updateProgression(
+                    bookId,
+                    locator.locations.totalProgression?.toFloat() ?: 0f
+                )
+            }
         }
     }
 
@@ -584,7 +594,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             }
             ttsNavigator = nav
 
-            val binder = TtsMediaService.bind(getApplication())
+            val binder = ttsServiceBinder ?: TtsMediaService.bind(getApplication())
             ttsServiceBinder = binder
             binder?.openSession(nav)
             navigator?.let { epubNavigator ->
@@ -600,6 +610,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     pageTurnTimestamps.add(System.currentTimeMillis())
                     // Persist position during TTS so it survives app kill
                     saveTtsPosition(bookId, utteranceLoc)
+                    // Push metadata to the media session for Android Auto now-playing
+                    pushNowPlayingMetadata(utteranceLoc)
                 }
             }
 
@@ -667,7 +679,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         ttsNavigator = null
         ttsManager.stop()
         ttsServiceBinder?.closeSession()
-        ttsServiceBinder = null
         _ttsState.value = TtsPlaybackState.STOPPED
 
         // Finalize TTS session and start a new manual session
@@ -700,6 +711,55 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             delay(200)
             startTts()
         }
+    }
+
+    /**
+     * Bind to TtsMediaService early so we can intercept Android Auto playback requests.
+     * When AA starts TTS for the book the phone UI already has open, we handle it through
+     * the normal ViewModel flow (with highlight sync) instead of standalone mode.
+     */
+    private fun bindTtsServiceForAutoRequests(bookId: String) {
+        viewModelScope.launch {
+            // Re-use existing binder if we already have one (e.g. from TTS start)
+            val binder = ttsServiceBinder ?: TtsMediaService.bind(getApplication()) ?: return@launch
+            ttsServiceBinder = binder
+            binder.ttsPlaybackRequestListener = TtsMediaService.TtsPlaybackRequestListener { requestedBookId ->
+                if (requestedBookId == bookId) {
+                    if (_ttsState.value == TtsPlaybackState.STOPPED) startTts()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /**
+     * Push chapter name, progress, and cover art to the media session so Android Auto's
+     * now-playing screen shows useful information during ViewModel-driven TTS.
+     */
+    private fun pushNowPlayingMetadata(locator: Locator) {
+        val binder = ttsServiceBinder ?: return
+        val publication = _uiState.value.publication ?: return
+        val hrefStr = locator.href.toString()
+        val toc = publication.tableOfContents
+        val chapterTitle = flattenTocLinksForChapter(toc)
+            .lastOrNull { hrefStr.startsWith(it.href.toString().substringBefore("#")) }
+            ?.title
+        val chapterPercent = ((locator.locations.progression ?: 0.0) * 100).toInt()
+        val bookPercent = ((locator.locations.totalProgression ?: 0.0) * 100).toInt()
+        val title = "${chapterTitle ?: "Reading"} · $chapterPercent%"
+        val author = publication.metadata.authors.firstOrNull()?.name
+        val bookTitle = publication.metadata.title
+        val metaBuilder = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(author)
+            .setAlbumTitle("$bookPercent% · $bookTitle")
+            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+            .setIsPlayable(true)
+            .setIsBrowsable(false)
+        currentCoverArt?.let { metaBuilder.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
+        binder.updateSessionMetadata(metaBuilder.build())
     }
 
     /**
@@ -780,6 +840,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         ttsNavigator?.close()
         ttsNavigator = null
         ttsManager.stop()
+        ttsServiceBinder?.ttsPlaybackRequestListener = null
         ttsServiceBinder?.closeSession()
         ttsServiceBinder = null
         _ttsState.value = TtsPlaybackState.STOPPED
