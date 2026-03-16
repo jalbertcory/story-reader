@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -289,15 +290,6 @@ fun ReaderScreen(
                                 )
                             }
                         }
-                        if (ttsState == TtsPlaybackState.STOPPED) {
-                            IconButton(onClick = { viewModel.startTts() }) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = "Start TTS",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
                         IconButton(onClick = { showSettings = true }) {
                             Icon(Icons.Default.Settings, contentDescription = "Settings")
                         }
@@ -308,13 +300,41 @@ fun ReaderScreen(
                 )
             }
 
-            // ── Bottom overlay (TTS controls + status bar) ───────────────────────
+            // ── Bottom overlay (action bar / TTS controls + status bar) ─────────
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
             ) {
-                // TTS controls bar — visible when TTS is active (replaces top bar to keep same reading area)
+                // Bottom action bar — shown with top bar when browsing options (TTS stopped)
+                AnimatedVisibility(
+                    visible = showBars && ttsState == TtsPlaybackState.STOPPED,
+                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(statusBarStyle.bg.copy(alpha = 0.92f))
+                            .padding(horizontal = 12.dp, vertical = 1.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.startTts() },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Headphones,
+                                contentDescription = "Start TTS",
+                                tint = statusBarStyle.text,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+
+                // TTS controls bar — visible when TTS is active
                 AnimatedVisibility(
                     visible = ttsState != TtsPlaybackState.STOPPED,
                     enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
