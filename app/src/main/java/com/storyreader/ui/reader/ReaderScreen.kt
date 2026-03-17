@@ -465,6 +465,8 @@ private fun ReaderBrightnessGestureZone(
     Box(
         modifier = modifier
             .fillMaxHeight()
+            .statusBarsPadding()
+            .padding(top = 120.dp)
             .width(32.dp)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
