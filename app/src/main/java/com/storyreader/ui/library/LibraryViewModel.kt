@@ -23,7 +23,7 @@ enum class BookImportSource(
     GOOGLE_DRIVE("From Google Drive"),
     OPDS("From OPDS Catalog"),
     NEXTCLOUD("From Nextcloud", requiresCloudDivider = true),
-    STORY_MANAGER_SERIES("Browse Series", requiresCloudDivider = true)
+    STORY_MANAGER("From Story Manager", requiresCloudDivider = true)
 }
 
 enum class LibrarySortOption(val label: String) {
@@ -41,8 +41,15 @@ data class WebSeriesGroup(
     val newWordsSinceLastRead: Int
 )
 
+data class LibrarySeriesGroup(
+    val seriesName: String?,
+    val books: List<BookEntity>,
+    val lastReadTime: Long?
+)
+
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
+    val libraryGroups: List<LibrarySeriesGroup> = emptyList(),
     val lastReadTimes: Map<String, Long> = emptyMap(),
     val sortOption: LibrarySortOption = LibrarySortOption.LAST_READ,
     val isLoading: Boolean = true,
@@ -82,8 +89,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 val lastReadMap = lastReads.associate { it.bookId to it.lastReadAt }
                 val sortedBooks = sortBooks(books, lastReadMap, sort)
                 val webGroups = buildWebSeriesGroups(webBooks)
+                val libraryGroups = buildLibraryGroups(sortedBooks, lastReadMap, sort)
                 _uiState.value.copy(
                     books = sortedBooks,
+                    libraryGroups = libraryGroups,
                     lastReadTimes = lastReadMap,
                     sortOption = sort,
                     isLoading = false,
@@ -148,15 +157,63 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         sessionDao.getSessionsForBook(bookId)
 
     private fun buildImportSources(hasNextcloudCredentials: Boolean): List<BookImportSource> {
+        val isStoryManager = app.opdsCredentialsManager.isStoryManagerBackend
         return buildList {
             add(BookImportSource.DEVICE)
             add(BookImportSource.GOOGLE_DRIVE)
-            add(BookImportSource.OPDS)
+            if (!isStoryManager) {
+                add(BookImportSource.OPDS)
+            }
             if (hasNextcloudCredentials) {
                 add(BookImportSource.NEXTCLOUD)
             }
-            if (app.opdsCredentialsManager.isStoryManagerBackend) {
-                add(BookImportSource.STORY_MANAGER_SERIES)
+            if (isStoryManager) {
+                add(BookImportSource.STORY_MANAGER)
+            }
+        }
+    }
+
+    private fun buildLibraryGroups(
+        sortedBooks: List<BookEntity>,
+        lastReadTimes: Map<String, Long>,
+        sort: LibrarySortOption
+    ): List<LibrarySeriesGroup> {
+        // Separate books with a series from standalone books
+        val (seriesBooks, standaloneBooks) = sortedBooks.partition { it.series != null }
+
+        // Build series groups
+        val seriesGroups = seriesBooks
+            .groupBy { it.series }
+            .map { (seriesName, books) ->
+                val groupLastRead = books.mapNotNull { lastReadTimes[it.bookId] }.maxOrNull()
+                LibrarySeriesGroup(
+                    seriesName = seriesName,
+                    books = sortBooks(books, lastReadTimes, sort),
+                    lastReadTime = groupLastRead
+                )
+            }
+
+        // Standalone books become single-book groups
+        val standaloneGroups = standaloneBooks.map { book ->
+            LibrarySeriesGroup(
+                seriesName = null,
+                books = listOf(book),
+                lastReadTime = lastReadTimes[book.bookId]
+            )
+        }
+
+        // Merge and sort all groups together
+        val allGroups = seriesGroups + standaloneGroups
+        return when (sort) {
+            LibrarySortOption.LAST_READ -> allGroups.sortedByDescending { it.lastReadTime ?: 0L }
+            LibrarySortOption.TITLE -> allGroups.sortedBy {
+                (it.seriesName ?: it.books.firstOrNull()?.title ?: "").lowercase()
+            }
+            LibrarySortOption.AUTHOR -> allGroups.sortedBy {
+                it.books.firstOrNull()?.author?.lowercase() ?: ""
+            }
+            LibrarySortOption.PROGRESS -> allGroups.sortedByDescending {
+                it.books.maxOfOrNull { book -> book.totalProgression } ?: 0f
             }
         }
     }

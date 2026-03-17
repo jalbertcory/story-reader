@@ -2,6 +2,7 @@ package com.storyreader.ui.library
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
@@ -37,6 +40,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -166,7 +170,7 @@ fun LibraryScreen(
                                             BookImportSource.GOOGLE_DRIVE -> onGoogleDriveImportClick()
                                             BookImportSource.OPDS -> onOpdsImportClick()
                                             BookImportSource.NEXTCLOUD -> onNextcloudImportClick()
-                                            BookImportSource.STORY_MANAGER_SERIES -> onSeriesBrowserClick()
+                                            BookImportSource.STORY_MANAGER -> onSeriesBrowserClick()
                                         }
                                     }
                                 )
@@ -208,7 +212,7 @@ fun LibraryScreen(
                             onBookClick = onBookClick
                         )
                     }
-                    uiState.books.isEmpty() -> {
+                    uiState.libraryGroups.isEmpty() -> {
                     Column(
                         modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -226,61 +230,12 @@ fun LibraryScreen(
                     }
                 }
                 else -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(uiState.books, key = { it.bookId }) { book ->
-                            val lastReadAt = uiState.lastReadTimes[book.bookId]
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = { onBookClick(book.bookId) },
-                                        onLongClick = { selectedBookForDetail = book }
-                                    )
-                            ) {
-                                Row(modifier = Modifier.padding(12.dp)) {
-                                    BookCoverThumbnail(
-                                        coverUri = book.coverUri,
-                                        title = book.title,
-                                        width = 56.dp,
-                                        height = 80.dp
-                                    )
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(start = 12.dp)
-                                    ) {
-                                        Text(
-                                            text = book.title,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        if (book.author.isNotBlank()) {
-                                            Text(
-                                                text = book.author,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        if (lastReadAt != null) {
-                                            Text(
-                                                text = "Last read ${formatLastRead(lastReadAt)}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        if (book.totalProgression > 0f) {
-                                            BookProgressRow(
-                                                progress = book.totalProgression,
-                                                modifier = Modifier.padding(top = 6.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    LibraryGroupedList(
+                        groups = uiState.libraryGroups,
+                        lastReadTimes = uiState.lastReadTimes,
+                        onBookClick = onBookClick,
+                        onBookLongClick = { selectedBookForDetail = it }
+                    )
                 }
             }
 
@@ -301,5 +256,162 @@ fun LibraryScreen(
             viewModel = viewModel,
             onDismiss = { selectedBookForDetail = null }
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibraryGroupedList(
+    groups: List<LibrarySeriesGroup>,
+    lastReadTimes: Map<String, Long>,
+    onBookClick: (String) -> Unit,
+    onBookLongClick: (BookEntity) -> Unit
+) {
+    val expandedSeries = remember { mutableStateMapOf<String, Boolean>() }
+
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(groups, key = { it.seriesName ?: it.books.first().bookId }) { group ->
+            if (group.seriesName != null && group.books.size > 1) {
+                // Series group — expandable card
+                val isExpanded = expandedSeries[group.seriesName] ?: false
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { expandedSeries[group.seriesName] = !isExpanded },
+                            onLongClick = {}
+                        )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            group.books.firstOrNull()?.coverUri?.let { coverUri ->
+                                BookCoverThumbnail(
+                                    coverUri = coverUri,
+                                    title = group.seriesName,
+                                    width = 56.dp,
+                                    height = 80.dp
+                                )
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 12.dp)
+                            ) {
+                                Text(
+                                    text = group.seriesName,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "${group.books.size} books",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                group.lastReadTime?.let { lastRead ->
+                                    Text(
+                                        text = "Last read ${formatLastRead(lastRead)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.ExpandLess
+                                    else Icons.Default.ExpandMore,
+                                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        AnimatedVisibility(visible = isExpanded) {
+                            Column(
+                                modifier = Modifier.padding(top = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                group.books.forEach { book ->
+                                    LibraryBookCard(
+                                        book = book,
+                                        lastReadAt = lastReadTimes[book.bookId],
+                                        onClick = { onBookClick(book.bookId) },
+                                        onLongClick = { onBookLongClick(book) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Single book — standard card
+                val book = group.books.first()
+                LibraryBookCard(
+                    book = book,
+                    lastReadAt = lastReadTimes[book.bookId],
+                    onClick = { onBookClick(book.bookId) },
+                    onLongClick = { onBookLongClick(book) }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibraryBookCard(
+    book: BookEntity,
+    lastReadAt: Long?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        Row(modifier = Modifier.padding(12.dp)) {
+            BookCoverThumbnail(
+                coverUri = book.coverUri,
+                title = book.title,
+                width = 56.dp,
+                height = 80.dp
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp)
+            ) {
+                Text(
+                    text = book.title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (book.author.isNotBlank()) {
+                    Text(
+                        text = book.author,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (lastReadAt != null) {
+                    Text(
+                        text = "Last read ${formatLastRead(lastReadAt)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (book.totalProgression > 0f) {
+                    BookProgressRow(
+                        progress = book.totalProgression,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
+        }
     }
 }

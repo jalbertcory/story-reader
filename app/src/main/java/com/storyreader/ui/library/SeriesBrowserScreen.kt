@@ -63,7 +63,7 @@ fun SeriesBrowserScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Browse Series") },
+                title = { Text("Story Manager") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -84,7 +84,7 @@ fun SeriesBrowserScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search series...") },
+                placeholder = { Text("Search...") },
                 singleLine = true
             )
 
@@ -107,7 +107,7 @@ fun SeriesBrowserScreen(
                             color = MaterialTheme.colorScheme.error
                         )
                         Button(
-                            onClick = { viewModel.loadSeries() },
+                            onClick = { viewModel.loadAll() },
                             modifier = Modifier.padding(top = 8.dp)
                         ) {
                             Text("Retry")
@@ -119,64 +119,124 @@ fun SeriesBrowserScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(uiState.filteredSeries, key = { it.name }) { series ->
-                            val isImporting = uiState.importingSeriesName == series.name
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                        if (uiState.filteredSeries.isNotEmpty()) {
+                            item(key = "series_header") {
+                                Text(
+                                    text = "Series",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
+                            items(uiState.filteredSeries, key = { "series_${it.name}" }) { series ->
+                                val isImporting = uiState.importingSeriesName == series.name
+                                Card(modifier = Modifier.fillMaxWidth()) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            SeriesCoverImage(
+                                                coverUrl = series.coverUrl,
+                                                serverBaseUrl = uiState.serverBaseUrl,
+                                                authHeader = uiState.authHeader,
+                                                seriesName = series.name
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = series.name,
+                                                    style = MaterialTheme.typography.titleMedium
+                                                )
+                                                val wordText = when {
+                                                    series.totalWords >= 1_000_000 -> "%.1fM words".format(series.totalWords / 1_000_000.0)
+                                                    series.totalWords >= 1_000 -> "%.1fK words".format(series.totalWords / 1_000.0)
+                                                    else -> "${series.totalWords} words"
+                                                }
+                                                Text(
+                                                    text = "${series.bookCount} books, $wordText",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Button(
+                                                onClick = { viewModel.importSeries(series.name) },
+                                                enabled = !isImporting && uiState.importingSeriesName == null
+                                            ) {
+                                                Text(if (isImporting) "Importing..." else "Add All")
+                                            }
+                                        }
+                                        if (isImporting) {
+                                            val progress = uiState.importProgress
+                                            if (progress != null && progress.second > 0) {
+                                                LinearProgressIndicator(
+                                                    progress = { progress.first.toFloat() / progress.second },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 8.dp)
+                                                )
+                                                Text(
+                                                    text = "${progress.first}/${progress.second}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    modifier = Modifier.padding(top = 4.dp)
+                                                )
+                                            } else {
+                                                LinearProgressIndicator(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 8.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (uiState.filteredStandaloneBooks.isNotEmpty()) {
+                            item(key = "standalone_header") {
+                                Text(
+                                    text = "Individual Books",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                )
+                            }
+                            items(uiState.filteredStandaloneBooks, key = { "book_${it.id}" }) { book ->
+                                val isImporting = uiState.importingBookId == book.id
+                                Card(modifier = Modifier.fillMaxWidth()) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .padding(12.dp)
+                                            .fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         SeriesCoverImage(
-                                            coverUrl = series.coverUrl,
+                                            coverUrl = book.coverUrl,
                                             serverBaseUrl = uiState.serverBaseUrl,
                                             authHeader = uiState.authHeader,
-                                            seriesName = series.name
+                                            seriesName = book.title
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = series.name,
+                                                text = book.title,
                                                 style = MaterialTheme.typography.titleMedium
                                             )
-                                            val wordText = when {
-                                                series.totalWords >= 1_000_000 -> "%.1fM words".format(series.totalWords / 1_000_000.0)
-                                                series.totalWords >= 1_000 -> "%.1fK words".format(series.totalWords / 1_000.0)
-                                                else -> "${series.totalWords} words"
+                                            if (book.author.isNotBlank()) {
+                                                Text(
+                                                    text = book.author,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
-                                            Text(
-                                                text = "${series.bookCount} books, $wordText",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
                                         }
                                         Button(
-                                            onClick = { viewModel.importSeries(series.name) },
-                                            enabled = !isImporting && uiState.importingSeriesName == null
+                                            onClick = { viewModel.importStandaloneBook(book) },
+                                            enabled = !isImporting && uiState.importingBookId == null
+                                                && uiState.importingSeriesName == null
                                         ) {
-                                            Text(if (isImporting) "Importing..." else "Add All")
-                                        }
-                                    }
-                                    if (isImporting) {
-                                        val progress = uiState.importProgress
-                                        if (progress != null && progress.second > 0) {
-                                            LinearProgressIndicator(
-                                                progress = { progress.first.toFloat() / progress.second },
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 8.dp)
-                                            )
-                                            Text(
-                                                text = "${progress.first}/${progress.second}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                modifier = Modifier.padding(top = 4.dp)
-                                            )
-                                        } else {
-                                            LinearProgressIndicator(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 8.dp)
-                                            )
+                                            Text(if (isImporting) "Adding..." else "Add")
                                         }
                                     }
                                 }

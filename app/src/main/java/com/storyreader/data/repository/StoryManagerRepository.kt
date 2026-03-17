@@ -71,6 +71,20 @@ class StoryManagerRepository(
         entity
     }
 
+    suspend fun importStandaloneBooks(
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
+    ): Result<Int> = runCatching {
+        val books = apiClient.fetchStandaloneBooks().getOrThrow()
+        var imported = 0
+        for ((index, serverBook) in books.withIndex()) {
+            onProgress(index, books.size)
+            importSingleBook(serverBook)
+            imported++
+        }
+        onProgress(books.size, books.size)
+        imported
+    }
+
     suspend fun checkForUpdates(): Result<Int> = runCatching {
         val webBooks = bookDao.getWebBooksForSync()
         if (webBooks.isEmpty()) return@runCatching 0
