@@ -46,4 +46,13 @@ interface BookDao {
 
     @Query("UPDATE books SET hidden = :hidden WHERE bookId = :bookId")
     suspend fun setHidden(bookId: String, hidden: Boolean)
+
+    @Query("SELECT * FROM books WHERE sourceType = 'web' AND hidden = 0 ORDER BY series ASC, title ASC")
+    fun getWebBooks(): Flow<List<BookEntity>>
+
+    @Query("SELECT * FROM books WHERE serverBookId = :serverBookId LIMIT 1")
+    suspend fun getByServerBookId(serverBookId: Int): BookEntity?
+
+    @Query("SELECT * FROM books WHERE sourceType = 'web'")
+    suspend fun getWebBooksForSync(): List<BookEntity>
 }

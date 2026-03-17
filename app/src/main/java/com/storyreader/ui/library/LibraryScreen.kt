@@ -32,6 +32,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -75,6 +77,7 @@ fun LibraryScreen(
     onGoogleDriveImportClick: () -> Unit,
     onOpdsImportClick: () -> Unit,
     onStatsClick: () -> Unit,
+    onSeriesBrowserClick: () -> Unit = {},
     viewModel: LibraryViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -163,6 +166,7 @@ fun LibraryScreen(
                                             BookImportSource.GOOGLE_DRIVE -> onGoogleDriveImportClick()
                                             BookImportSource.OPDS -> onOpdsImportClick()
                                             BookImportSource.NEXTCLOUD -> onNextcloudImportClick()
+                                            BookImportSource.STORY_MANAGER_SERIES -> onSeriesBrowserClick()
                                         }
                                     }
                                 )
@@ -179,12 +183,32 @@ fun LibraryScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (uiState.isStoryManagerBackend) {
+                val tabTitles = listOf("Library", "Web Stories")
+                PrimaryTabRow(selectedTabIndex = uiState.selectedTab) {
+                    tabTitles.forEachIndexed { index, title ->
+                        Tab(
+                            selected = uiState.selectedTab == index,
+                            onClick = { viewModel.selectTab(index) },
+                            text = { Text(title) }
+                        )
+                    }
                 }
-                uiState.books.isEmpty() -> {
+            }
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    uiState.isLoading -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    uiState.selectedTab == 1 && uiState.isStoryManagerBackend -> {
+                        WebStoriesTab(
+                            groups = uiState.webSeriesGroups,
+                            onBookClick = onBookClick
+                        )
+                    }
+                    uiState.books.isEmpty() -> {
                     Column(
                         modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -260,12 +284,13 @@ fun LibraryScreen(
                 }
             }
 
-            uiState.error?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
-                )
+                uiState.error?.let { error ->
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
+                    )
+                }
             }
         }
     }

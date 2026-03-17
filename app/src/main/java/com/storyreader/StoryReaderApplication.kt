@@ -6,6 +6,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.storyreader.data.catalog.OpdsCatalogRepository
 import com.storyreader.data.catalog.OpdsCredentialsManager
+import com.storyreader.data.catalog.StoryManagerApiClient
+import com.storyreader.data.repository.StoryManagerRepository
+import com.storyreader.data.sync.WebBookUpdateScheduler
 import com.storyreader.data.db.AppDatabase
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.BookRepositoryImpl
@@ -72,6 +75,20 @@ class StoryReaderApplication : Application() {
         OpdsCatalogRepository()
     }
 
+    val storyManagerApiClient: StoryManagerApiClient by lazy {
+        StoryManagerApiClient(opdsCredentialsManager)
+    }
+
+    val storyManagerRepository: StoryManagerRepository by lazy {
+        StoryManagerRepository(
+            apiClient = storyManagerApiClient,
+            bookDao = database.bookDao(),
+            epubRepository = epubRepository,
+            downloadDir = java.io.File(filesDir, "story_manager_downloads"),
+            coversDir = java.io.File(filesDir, "covers")
+        )
+    }
+
     val googleDriveSyncRepository: GoogleDriveSyncRepository by lazy {
         GoogleDriveSyncRepository(
             authManager = googleDriveAuthManager,
@@ -111,6 +128,10 @@ class StoryReaderApplication : Application() {
 
         if (syncManager.hasEnabledConfiguredProviders()) {
             SyncScheduler.schedulePeriodicSync(this)
+        }
+
+        if (opdsCredentialsManager.isStoryManagerBackend) {
+            WebBookUpdateScheduler.schedulePeriodicSync(this)
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {

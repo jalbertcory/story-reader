@@ -15,6 +15,7 @@ import com.storyreader.ui.library.GoogleDriveBrowserScreen
 import com.storyreader.ui.library.LibraryScreen
 import com.storyreader.ui.library.NextcloudBrowserScreen
 import com.storyreader.ui.library.OpdsBrowserScreen
+import com.storyreader.ui.library.SeriesBrowserScreen
 import com.storyreader.ui.reader.ReaderScreen
 import com.storyreader.ui.settings.AppSettingsScreen
 import com.storyreader.ui.stats.StatsScreen
@@ -57,6 +58,9 @@ fun StoryReaderNavHost() {
                 },
                 onStatsClick = {
                     navController.navigate(Screen.Stats.route)
+                },
+                onSeriesBrowserClick = {
+                    navController.navigate(Screen.SeriesBrowser.route)
                 }
             )
         }
@@ -92,6 +96,11 @@ fun StoryReaderNavHost() {
         }
         composable(Screen.Stats.route) {
             StatsScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.SeriesBrowser.route) {
+            SeriesBrowserScreen(
                 onBack = { navController.popBackStack() }
             )
         }

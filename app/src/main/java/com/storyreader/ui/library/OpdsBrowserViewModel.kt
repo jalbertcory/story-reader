@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.catalog.OpdsCatalogEntry
+import com.storyreader.data.catalog.OpdsCredentials
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,7 +42,7 @@ class OpdsBrowserViewModel(application: Application) : AndroidViewModel(applicat
                 configuredUrl = stored.baseUrl,
                 configuredUsername = stored.username,
                 isStoryManagerBackend = stored.isStoryManagerBackend,
-                pathStack = listOf(stored.baseUrl to "OPDS Catalog"),
+                pathStack = listOf(catalogRootUrl(stored) to "OPDS Catalog"),
                 hasSavedConfiguration = true
             )
         } ?: OpdsBrowserUiState()
@@ -49,7 +51,7 @@ class OpdsBrowserViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         opdsCredentialsManager.currentCredentials()?.let { stored ->
-            loadCatalog(stored.baseUrl, resetPath = true)
+            loadCatalog(catalogRootUrl(stored), resetPath = true)
         }
     }
 
@@ -58,7 +60,12 @@ class OpdsBrowserViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.value = _uiState.value.copy(error = "Configure OPDS in Settings first")
             return
         }
-        loadCatalog(credentials.baseUrl, resetPath = true)
+        loadCatalog(catalogRootUrl(credentials), resetPath = true)
+    }
+
+    private fun catalogRootUrl(credentials: OpdsCredentials): String {
+        if (!credentials.isStoryManagerBackend) return credentials.baseUrl
+        return credentials.baseUrl.trimEnd('/') + "/reader/opds"
     }
 
     fun navigateTo(entry: OpdsCatalogEntry) {
@@ -79,7 +86,7 @@ class OpdsBrowserViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun downloadEntry(entry: OpdsCatalogEntry) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val credentials = opdsCredentialsManager.currentCredentials() ?: return@launch
             _uiState.value = _uiState.value.copy(
                 downloadingItems = _uiState.value.downloadingItems + entry.id
@@ -102,7 +109,7 @@ class OpdsBrowserViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun loadCatalog(url: String, resetPath: Boolean) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val credentials = opdsCredentialsManager.currentCredentials() ?: run {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

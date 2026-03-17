@@ -2,17 +2,14 @@ package com.storyreader.ui.library
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -74,43 +71,13 @@ fun OpdsBrowserScreen(
             totalToDownload = uiState.totalToDownload,
             modifier = Modifier.fillMaxSize().padding(padding),
             headerContent = {
-                Text(
-                    text = if (uiState.hasSavedConfiguration) {
-                        "Using the saved OPDS configuration from Settings."
-                    } else {
-                        "Set up your OPDS server in Settings before browsing."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-                if (uiState.hasSavedConfiguration) {
-                    OutlinedTextField(
-                        value = uiState.configuredUrl,
-                        onValueChange = {},
-                        label = { Text("Catalog URL") },
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .fillMaxWidth(),
-                        enabled = false,
-                        singleLine = true
+                if (!uiState.hasSavedConfiguration) {
+                    Text(
+                        text = "Set up your OPDS server in Settings before browsing.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
-                    OutlinedTextField(
-                        value = uiState.configuredUsername,
-                        onValueChange = {},
-                        label = { Text(if (uiState.isStoryManagerBackend) "Story Manager User" else "Username") },
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .fillMaxWidth(),
-                        enabled = false,
-                        singleLine = true
-                    )
-                    Button(
-                        onClick = viewModel::connect,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    ) {
-                        Text("Load Catalog")
-                    }
                 }
             },
             onItemClick = { item ->
