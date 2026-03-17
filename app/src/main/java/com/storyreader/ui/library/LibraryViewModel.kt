@@ -22,7 +22,8 @@ enum class BookImportSource(
     DEVICE("From Device"),
     GOOGLE_DRIVE("From Google Drive"),
     OPDS("From OPDS Catalog"),
-    NEXTCLOUD("From Nextcloud", requiresCloudDivider = true)
+    NEXTCLOUD("From Nextcloud", requiresCloudDivider = true),
+    STORY_MANAGER_SERIES("Browse Series", requiresCloudDivider = true)
 }
 
 enum class LibrarySortOption(val label: String) {
@@ -31,6 +32,14 @@ enum class LibrarySortOption(val label: String) {
     AUTHOR("Author"),
     PROGRESS("Progress")
 }
+
+data class WebSeriesGroup(
+    val seriesName: String,
+    val books: List<BookEntity>,
+    val totalServerWordCount: Int,
+    val latestUpdate: Long?,
+    val newWordsSinceLastRead: Int
+)
 
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
@@ -43,7 +52,10 @@ data class LibraryUiState(
         BookImportSource.DEVICE,
         BookImportSource.GOOGLE_DRIVE,
         BookImportSource.OPDS
-    )
+    ),
+    val selectedTab: Int = 0,
+    val webSeriesGroups: List<WebSeriesGroup> = emptyList(),
+    val isStoryManagerBackend: Boolean = false
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -51,6 +63,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val app = application as StoryReaderApplication
     private val repository: BookRepository = app.bookRepository
     private val sessionDao = app.database.readingSessionDao()
+    private val bookDao = app.database.bookDao()
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -58,26 +71,35 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _sortOption = MutableStateFlow(LibrarySortOption.LAST_READ)
 
     init {
+        val isStoryManager = app.opdsCredentialsManager.isStoryManagerBackend
         viewModelScope.launch {
             combine(
                 repository.observeAll(),
                 sessionDao.getLastReadTimes(),
-                _sortOption
-            ) { books, lastReads, sort ->
+                _sortOption,
+                bookDao.getWebBooks()
+            ) { books, lastReads, sort, webBooks ->
                 val lastReadMap = lastReads.associate { it.bookId to it.lastReadAt }
                 val sortedBooks = sortBooks(books, lastReadMap, sort)
+                val webGroups = buildWebSeriesGroups(webBooks)
                 _uiState.value.copy(
                     books = sortedBooks,
                     lastReadTimes = lastReadMap,
                     sortOption = sort,
                     isLoading = false,
                     hasNextcloudCredentials = app.credentialsManager.hasCredentials,
-                    importSources = buildImportSources(app.credentialsManager.hasCredentials)
+                    importSources = buildImportSources(app.credentialsManager.hasCredentials),
+                    webSeriesGroups = webGroups,
+                    isStoryManagerBackend = isStoryManager
                 )
             }.collect { state ->
                 _uiState.value = state
             }
         }
+    }
+
+    fun selectTab(tab: Int) {
+        _uiState.value = _uiState.value.copy(selectedTab = tab)
     }
 
     fun setSortOption(option: LibrarySortOption) {
@@ -133,6 +155,30 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             if (hasNextcloudCredentials) {
                 add(BookImportSource.NEXTCLOUD)
             }
+            if (app.opdsCredentialsManager.isStoryManagerBackend) {
+                add(BookImportSource.STORY_MANAGER_SERIES)
+            }
         }
+    }
+
+    private fun buildWebSeriesGroups(webBooks: List<BookEntity>): List<WebSeriesGroup> {
+        return webBooks
+            .groupBy { it.series ?: "Unsorted" }
+            .map { (seriesName, books) ->
+                val totalServerWords = books.sumOf { it.serverWordCount ?: 0 }
+                val newWords = books.sumOf { book ->
+                    val serverWords = book.serverWordCount ?: 0
+                    val localWords = book.wordCount
+                    (serverWords - localWords).coerceAtLeast(0)
+                }
+                WebSeriesGroup(
+                    seriesName = seriesName,
+                    books = books,
+                    totalServerWordCount = totalServerWords,
+                    latestUpdate = books.mapNotNull { it.contentUpdatedAt }.maxOrNull(),
+                    newWordsSinceLastRead = newWords
+                )
+            }
+            .sortedBy { it.seriesName.lowercase() }
     }
 }

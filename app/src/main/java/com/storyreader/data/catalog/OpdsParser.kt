@@ -156,8 +156,13 @@ class OpdsParser {
     }
 
     private fun resolveUrl(requestUrl: String, href: String): String {
-        val absolute = requestUrl.toHttpUrlOrNull()?.resolve(href)?.toString()
-        return absolute ?: href
+        val resolved = requestUrl.toHttpUrlOrNull()?.resolve(href)?.toString() ?: href
+        // If the original request was HTTPS but the resolved URL is HTTP
+        // (e.g., the server returned absolute HTTP links), upgrade to HTTPS
+        if (requestUrl.startsWith("https://") && resolved.startsWith("http://")) {
+            return resolved.replaceFirst("http://", "https://")
+        }
+        return resolved
     }
 
     private fun JSONArray.firstHref(): String? {

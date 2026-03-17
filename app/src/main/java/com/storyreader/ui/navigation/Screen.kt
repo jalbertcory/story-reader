@@ -12,4 +12,5 @@ sealed class Screen(val route: String) {
     data object GoogleDriveBrowser : Screen("google_drive_browser")
     data object OpdsBrowser : Screen("opds_browser")
     data object Stats : Screen("stats")
+    data object SeriesBrowser : Screen("series_browser")
 }
