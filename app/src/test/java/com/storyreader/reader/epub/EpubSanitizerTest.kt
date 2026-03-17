@@ -105,6 +105,39 @@ class EpubSanitizerTest {
     }
 
     @Test
+    fun `self-closing head tag is expanded`() {
+        // Story Manager's ebooklib serializes empty head as <head/>
+        val html = """
+            <?xml version='1.0' encoding='utf-8'?>
+            <!DOCTYPE html>
+            <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+              <head/>
+              <body><p>Hello</p></body>
+            </html>
+        """.trimIndent()
+        val result = EpubSanitizer.sanitizeXhtml(html)
+        assertNotNull(result)
+        assert(!result!!.contains("<head/>")) { "Should not contain <head/>" }
+        assert(result.contains("<head></head>")) { "Should contain <head></head>" }
+        assert(result.contains("<body>")) { "Should preserve <body>" }
+    }
+
+    @Test
+    fun `self-closing head with space is expanded`() {
+        val html = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <html xmlns="http://www.w3.org/1999/xhtml">
+            <head />
+            <body><p>Hello</p></body>
+            </html>
+        """.trimIndent()
+        val result = EpubSanitizer.sanitizeXhtml(html)
+        assertNotNull(result)
+        assert(!result!!.contains("<head />")) { "Should not contain <head />" }
+        assert(result.contains("<head></head>")) { "Should contain <head></head>" }
+    }
+
+    @Test
     fun `preserves existing xml declaration`() {
         val html = """
             <?xml version="1.0" encoding="UTF-8"?>

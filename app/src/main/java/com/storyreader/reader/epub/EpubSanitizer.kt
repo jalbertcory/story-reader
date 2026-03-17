@@ -70,6 +70,15 @@ object EpubSanitizer {
             result = result.removePrefix(xmlDecl).trimStart()
         }
 
+        // Expand self-closing <head/> to <head></head>
+        // Some EPUB generators (e.g., Story Manager's ebooklib) serialize empty
+        // head elements as self-closing, which Readium can't inject CSS into.
+        val selfClosingHead = SELF_CLOSING_HEAD_REGEX.find(result)
+        if (selfClosingHead != null) {
+            result = result.replaceRange(selfClosingHead.range, "<head></head>")
+            modified = true
+        }
+
         // Ensure <html> wrapper exists
         if (!result.contains("<html", ignoreCase = true)) {
             result = "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n$result\n</html>"
@@ -171,6 +180,7 @@ object EpubSanitizer {
         return lower.endsWith(".xhtml") || lower.endsWith(".html") || lower.endsWith(".htm")
     }
 
+    private val SELF_CLOSING_HEAD_REGEX = Regex("""<head\s*/>""", RegexOption.IGNORE_CASE)
     private val XML_DECL_REGEX = Regex("""<\?xml[^?]*\?>""", RegexOption.IGNORE_CASE)
     private val HEAD_INSERT_REGEX = Regex("""<html[^>]*>""", RegexOption.IGNORE_CASE)
     private val OPEN_HEAD_REGEX = Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)
