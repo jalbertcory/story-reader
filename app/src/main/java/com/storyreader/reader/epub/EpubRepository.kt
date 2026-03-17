@@ -18,6 +18,7 @@ class EpubRepository(context: Context) {
 
     suspend fun openPublication(uri: Uri): Result<Publication> {
         return try {
+            EpubSanitizer.sanitizeIfNeeded(uri)
             val url = AbsoluteUrl(uri.toString())
                 ?: throw IllegalArgumentException("Invalid URI: $uri")
             val asset = assetRetriever.retrieve(url)

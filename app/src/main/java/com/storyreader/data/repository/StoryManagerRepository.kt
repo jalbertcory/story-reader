@@ -36,7 +36,6 @@ class StoryManagerRepository(
     }
 
     suspend fun importSingleBook(serverBook: ServerBook): Result<BookEntity> = runCatching {
-        val stableBookId = "storymanager://${serverBook.id}"
         val existing = bookDao.getByServerBookId(serverBook.id)
 
         val file = apiClient.downloadBook(serverBook.id, downloadDir).getOrThrow()
@@ -45,14 +44,21 @@ class StoryManagerRepository(
         val coverUri = saveCover(publication.cover())
         val wordCount = serverBook.currentWordCount ?: 0
 
+        // Use the file URI as bookId so the reader can open it.
+        // On re-import (update), delete the old entity if the file path changed,
+        // then insert with the new path while preserving reading progress.
+        if (existing != null && existing.bookId != fileUri.toString()) {
+            bookDao.delete(existing)
+        }
+
         val entity = BookEntity(
-            bookId = stableBookId,
+            bookId = fileUri.toString(),
             title = serverBook.title,
             author = serverBook.author,
             coverUri = coverUri ?: existing?.coverUri,
             totalProgression = existing?.totalProgression ?: 0f,
             wordCount = existing?.wordCount ?: wordCount,
-            hidden = existing?.hidden ?: false,
+            hidden = false,
             series = serverBook.series,
             sourceType = serverBook.sourceType,
             serverBookId = serverBook.id,
