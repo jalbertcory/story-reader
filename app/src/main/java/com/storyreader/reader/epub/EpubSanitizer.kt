@@ -77,6 +77,14 @@ object EpubSanitizer {
         if (selfClosingHead != null) {
             result = result.replaceRange(selfClosingHead.range, "<head></head>")
             modified = true
+
+            // Clean up stray </head> left by a previous sanitizer run that
+            // inserted </head> before <body> without expanding <head/> first.
+            // This prevents <head></head></head> which is invalid XML.
+            val duplicateHeadClose = DUPLICATE_HEAD_CLOSE_REGEX.find(result)
+            if (duplicateHeadClose != null) {
+                result = result.replaceRange(duplicateHeadClose.range, "</head>")
+            }
         }
 
         // Ensure <html> wrapper exists
@@ -181,6 +189,7 @@ object EpubSanitizer {
     }
 
     private val SELF_CLOSING_HEAD_REGEX = Regex("""<head\s*/>""", RegexOption.IGNORE_CASE)
+    private val DUPLICATE_HEAD_CLOSE_REGEX = Regex("""</head>\s*</head>""", RegexOption.IGNORE_CASE)
     private val XML_DECL_REGEX = Regex("""<\?xml[^?]*\?>""", RegexOption.IGNORE_CASE)
     private val HEAD_INSERT_REGEX = Regex("""<html[^>]*>""", RegexOption.IGNORE_CASE)
     private val OPEN_HEAD_REGEX = Regex("""<head[^>]*>""", RegexOption.IGNORE_CASE)

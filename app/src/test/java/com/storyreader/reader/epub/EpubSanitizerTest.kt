@@ -138,6 +138,28 @@ class EpubSanitizerTest {
     }
 
     @Test
+    fun `corrupted file with head-slash and stray close-head is fixed`() {
+        // Simulates a file corrupted by the first sanitizer version:
+        // it inserted </head> before <body> without expanding <head/> first,
+        // producing <head/>\n</head> which the new sanitizer must clean up.
+        val html = """
+            <?xml version='1.0' encoding='utf-8'?>
+            <!DOCTYPE html>
+            <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+              <head/>
+              </head>
+            <body><p>Hello</p></body>
+            </html>
+        """.trimIndent()
+        val result = EpubSanitizer.sanitizeXhtml(html)
+        assertNotNull(result)
+        val headCloseCount = Regex("</head>").findAll(result!!).count()
+        assertEquals("Should have exactly one </head>", 1, headCloseCount)
+        assert(result.contains("<head></head>")) { "Should contain <head></head>" }
+        assert(result.contains("<body>")) { "Should preserve <body>" }
+    }
+
+    @Test
     fun `preserves existing xml declaration`() {
         val html = """
             <?xml version="1.0" encoding="UTF-8"?>
