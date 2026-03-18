@@ -42,7 +42,7 @@ object SyncScheduler {
 
         WorkManager.getInstance(context).enqueueUniqueWork(
             SYNC_IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.KEEP,
             request
         )
     }
