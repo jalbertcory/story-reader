@@ -44,7 +44,9 @@ data class WebSeriesGroup(
 data class LibrarySeriesGroup(
     val seriesName: String?,
     val books: List<BookEntity>,
-    val lastReadTime: Long?
+    val lastReadTime: Long?,
+    val totalWordCount: Int = 0,
+    val totalProgression: Float = 0f
 )
 
 data class LibraryUiState(
@@ -186,10 +188,20 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             .groupBy { it.series }
             .map { (seriesName, books) ->
                 val groupLastRead = books.mapNotNull { lastReadTimes[it.bookId] }.maxOrNull()
+                val totalWordCount = books.sumOf { it.wordCount.coerceAtLeast(0) }
+                val totalWordsRead = books.sumOf { book ->
+                    (book.wordCount.coerceAtLeast(0) * book.totalProgression.coerceIn(0f, 1f)).toDouble()
+                }
                 LibrarySeriesGroup(
                     seriesName = seriesName,
                     books = sortBooks(books, lastReadTimes, sort),
-                    lastReadTime = groupLastRead
+                    lastReadTime = groupLastRead,
+                    totalWordCount = totalWordCount,
+                    totalProgression = if (totalWordCount > 0) {
+                        (totalWordsRead / totalWordCount).toFloat()
+                    } else {
+                        0f
+                    }
                 )
             }
 
@@ -198,7 +210,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             LibrarySeriesGroup(
                 seriesName = null,
                 books = listOf(book),
-                lastReadTime = lastReadTimes[book.bookId]
+                lastReadTime = lastReadTimes[book.bookId],
+                totalWordCount = book.wordCount,
+                totalProgression = book.totalProgression
             )
         }
 
@@ -213,7 +227,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 it.books.firstOrNull()?.author?.lowercase() ?: ""
             }
             LibrarySortOption.PROGRESS -> allGroups.sortedByDescending {
-                it.books.maxOfOrNull { book -> book.totalProgression } ?: 0f
+                it.totalProgression
             }
         }
     }

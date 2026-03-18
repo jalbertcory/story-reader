@@ -72,6 +72,14 @@ private fun formatLastRead(timestampMs: Long): String {
     }
 }
 
+private fun formatCompactWordCount(words: Int): String {
+    return when {
+        words >= 1_000_000 -> "%.1fM words".format(words / 1_000_000.0)
+        words >= 1_000 -> "%.1fK words".format(words / 1_000.0)
+        else -> "$words words"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
@@ -308,10 +316,21 @@ private fun LibraryGroupedList(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
-                                    text = "${group.books.size} books",
+                                    text = buildString {
+                                        append("${group.books.size} books")
+                                        if (group.totalWordCount > 0) {
+                                            append(", ${formatCompactWordCount(group.totalWordCount)}")
+                                        }
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (group.totalWordCount > 0) {
+                                    BookProgressRow(
+                                        progress = group.totalProgression,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                }
                                 group.lastReadTime?.let { lastRead ->
                                     Text(
                                         text = "Last read ${formatLastRead(lastRead)}",
@@ -395,6 +414,13 @@ private fun LibraryBookCard(
                     Text(
                         text = book.author,
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (book.wordCount > 0) {
+                    Text(
+                        text = formatCompactWordCount(book.wordCount),
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
