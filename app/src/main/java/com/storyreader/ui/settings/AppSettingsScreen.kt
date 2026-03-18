@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,9 +37,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -51,6 +58,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class AppSettingsUiState(
@@ -70,6 +78,7 @@ data class AppSettingsUiState(
     val opdsPassword: String = "",
     val isOpdsStoryManagerBackend: Boolean = false,
     val hasOpdsConfiguration: Boolean = false,
+    val isEditingOpdsConfiguration: Boolean = false,
     val opdsStatus: String = "Needs setup",
     val nextcloudStatus: String = "Needs setup",
     val googleDriveStatus: String = "Needs setup",
@@ -161,13 +170,21 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         opdsCredentials.clear()
         _uiState.value = buildUiState(
             savedMessage = "OPDS settings cleared",
-            forceEditing = _uiState.value.isEditingNextcloudCredentials,
+            forceEditingNextcloud = _uiState.value.isEditingNextcloudCredentials,
+            forceEditingOpds = true,
             draftServerUrl = _uiState.value.serverUrl,
             draftUsername = _uiState.value.username,
             draftAppPassword = _uiState.value.appPassword,
             draftOpdsUrl = "",
             draftOpdsUsername = "",
             draftOpdsPassword = ""
+        )
+    }
+
+    fun startEditingOpdsConfiguration() {
+        _uiState.value = _uiState.value.copy(
+            isEditingOpdsConfiguration = true,
+            savedMessage = null
         )
     }
 
@@ -184,7 +201,7 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun clearNextcloudCredentials() {
         nextcloudCredentials.clear()
         syncSettingsStore.isNextcloudEnabled = false
-        refreshUi(savedMessage = "Nextcloud settings cleared", forceEditing = true)
+        refreshUi(savedMessage = "Nextcloud settings cleared", forceEditingNextcloud = true)
         refreshSyncScheduling()
     }
 
@@ -309,7 +326,8 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 .onFailure { error ->
                     _uiState.value = buildUiState(
                         savedMessage = error.message ?: "Sync failed",
-                        forceEditing = _uiState.value.isEditingNextcloudCredentials,
+                        forceEditingNextcloud = _uiState.value.isEditingNextcloudCredentials,
+                        forceEditingOpds = _uiState.value.isEditingOpdsConfiguration,
                         draftServerUrl = _uiState.value.serverUrl,
                         draftUsername = _uiState.value.username,
                         draftAppPassword = _uiState.value.appPassword,
@@ -322,10 +340,16 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private fun refreshUi(savedMessage: String?, forceEditing: Boolean? = null, isSyncingNow: Boolean = false) {
+    private fun refreshUi(
+        savedMessage: String?,
+        forceEditingNextcloud: Boolean? = null,
+        forceEditingOpds: Boolean? = null,
+        isSyncingNow: Boolean = false
+    ) {
         _uiState.value = buildUiState(
             savedMessage = savedMessage,
-            forceEditing = forceEditing,
+            forceEditingNextcloud = forceEditingNextcloud,
+            forceEditingOpds = forceEditingOpds,
             draftServerUrl = _uiState.value.serverUrl,
             draftUsername = _uiState.value.username,
             draftAppPassword = _uiState.value.appPassword,
@@ -338,7 +362,8 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun buildUiState(
         savedMessage: String?,
-        forceEditing: Boolean? = null,
+        forceEditingNextcloud: Boolean? = null,
+        forceEditingOpds: Boolean? = null,
         draftServerUrl: String = "",
         draftUsername: String = "",
         draftAppPassword: String = "",
@@ -358,7 +383,7 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
             appPassword = if (hasNextcloudCredentials) nextcloudCredentials.appPassword.orEmpty() else draftAppPassword,
             savedMessage = savedMessage,
             hasNextcloudCredentials = hasNextcloudCredentials,
-            isEditingNextcloudCredentials = forceEditing ?: !hasNextcloudCredentials,
+            isEditingNextcloudCredentials = forceEditingNextcloud ?: !hasNextcloudCredentials,
             isNextcloudSyncEnabled = nextcloudEnabled,
             isGoogleDriveSyncEnabled = googleDriveEnabled,
             hasGoogleDriveAccount = googleDriveCredentials.hasAccount,
@@ -373,6 +398,7 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
             opdsPassword = storedOpdsCredentials?.password ?: draftOpdsPassword,
             isOpdsStoryManagerBackend = opdsCredentials.isStoryManagerBackend,
             hasOpdsConfiguration = storedOpdsCredentials != null,
+            isEditingOpdsConfiguration = forceEditingOpds ?: storedOpdsCredentials == null,
             opdsStatus = when {
                 storedOpdsCredentials != null && storedOpdsCredentials.isStoryManagerBackend -> "Saved for Story Manager backend"
                 storedOpdsCredentials != null -> "Saved for standard OPDS browsing"
@@ -449,6 +475,7 @@ fun AppSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -497,7 +524,7 @@ fun AppSettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedTextField(
+                    KeyboardAwareOutlinedTextField(
                         value = uiState.serverUrl,
                         onValueChange = viewModel::onServerUrlChange,
                         label = { Text("Server URL") },
@@ -505,14 +532,14 @@ fun AppSettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    KeyboardAwareOutlinedTextField(
                         value = uiState.username,
                         onValueChange = viewModel::onUsernameChange,
                         label = { Text("Username") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    KeyboardAwareOutlinedTextField(
                         value = uiState.appPassword,
                         onValueChange = viewModel::onPasswordChange,
                         label = { Text("App Password") },
@@ -588,51 +615,67 @@ fun AppSettingsScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    text = "Save a default OPDS server for browsing. Story Manager backends lock the username to `reader`.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = uiState.opdsUrl,
-                    onValueChange = viewModel::onOpdsUrlChange,
-                    label = { Text("Catalog URL") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Story Manager backend", style = MaterialTheme.typography.bodyMedium)
-                    Switch(
-                        checked = uiState.isOpdsStoryManagerBackend,
-                        onCheckedChange = viewModel::onOpdsStoryManagerChange
+                if (uiState.hasOpdsConfiguration && !uiState.isEditingOpdsConfiguration) {
+                    Text(
+                        uiState.opdsUrl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                OutlinedTextField(
-                    value = uiState.opdsUsername,
-                    onValueChange = viewModel::onOpdsUsernameChange,
-                    label = { Text("Username") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isOpdsStoryManagerBackend,
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = uiState.opdsPassword,
-                    onValueChange = viewModel::onOpdsPasswordChange,
-                    label = { Text("Password") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = viewModel::saveOpdsSettings, modifier = Modifier.weight(1f)) {
-                        Text("Save")
+                    Text(
+                        "User: ${uiState.opdsUsername}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(onClick = viewModel::startEditingOpdsConfiguration) {
+                        Text("Edit Source")
                     }
-                    OutlinedButton(onClick = viewModel::clearOpdsSettings, modifier = Modifier.weight(1f)) {
-                        Text("Clear")
+                } else {
+                    Text(
+                        text = "Save a default OPDS server for browsing. Story Manager backends lock the username to `reader`.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    KeyboardAwareOutlinedTextField(
+                        value = uiState.opdsUrl,
+                        onValueChange = viewModel::onOpdsUrlChange,
+                        label = { Text("Catalog URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Story Manager backend", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = uiState.isOpdsStoryManagerBackend,
+                            onCheckedChange = viewModel::onOpdsStoryManagerChange
+                        )
+                    }
+                    KeyboardAwareOutlinedTextField(
+                        value = uiState.opdsUsername,
+                        onValueChange = viewModel::onOpdsUsernameChange,
+                        label = { Text("Username") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isOpdsStoryManagerBackend,
+                        singleLine = true
+                    )
+                    KeyboardAwareOutlinedTextField(
+                        value = uiState.opdsPassword,
+                        onValueChange = viewModel::onOpdsPasswordChange,
+                        label = { Text("Password") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = viewModel::saveOpdsSettings, modifier = Modifier.weight(1f)) {
+                            Text("Save")
+                        }
+                        OutlinedButton(onClick = viewModel::clearOpdsSettings, modifier = Modifier.weight(1f)) {
+                            Text("Clear")
+                        }
                     }
                 }
             }
@@ -689,4 +732,39 @@ private fun SourceSettingsCard(
         Text(title, style = MaterialTheme.typography.titleSmall)
         content()
     }
+}
+
+@Composable
+private fun KeyboardAwareOutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: @Composable (() -> Unit)? = null,
+    enabled: Boolean = true,
+    singleLine: Boolean = false,
+    visualTransformation: VisualTransformation = VisualTransformation.None
+) {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val coroutineScope = rememberCoroutineScope()
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        placeholder = placeholder,
+        enabled = enabled,
+        singleLine = singleLine,
+        visualTransformation = visualTransformation,
+        modifier = modifier
+            .bringIntoViewRequester(bringIntoViewRequester)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    coroutineScope.launch {
+                        delay(250)
+                        bringIntoViewRequester.bringIntoView()
+                    }
+                }
+            }
+    )
 }
