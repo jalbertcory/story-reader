@@ -1,6 +1,8 @@
 package com.storyreader.ui.reader
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import android.view.View
 import android.view.ViewGroup
@@ -30,8 +32,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
-import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -52,7 +54,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -102,6 +103,7 @@ private fun EpubPreferences?.isNightTheme() =
 private data class StatusBarStyle(val bg: Color, val text: Color)
 private data class ReaderChromeInsets(val horizontal: Dp, val bottom: Dp)
 private data class ChapterStatus(val label: String, val title: String, val progress: Float?)
+private data class BatteryStatus(val level: Int, val isCharging: Boolean)
 
 private val ReaderBottomBarReservedHeight = 25.dp
 
@@ -624,12 +626,12 @@ private fun ReaderStatusBar(
     val context = LocalContext.current
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     var currentTime by remember { mutableStateOf(timeFormat.format(Date())) }
-    var batteryPct by remember { mutableIntStateOf(getBatteryLevel(context)) }
+    var batteryStatus by remember { mutableStateOf(getBatteryStatus(context)) }
 
     LaunchedEffect(Unit) {
         while (isActive) {
             currentTime = timeFormat.format(Date())
-            batteryPct = getBatteryLevel(context)
+            batteryStatus = getBatteryStatus(context)
             delay(30_000)
         }
     }
@@ -695,10 +697,18 @@ private fun ReaderStatusBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("$currentTime  ", fontSize = 10.sp, color = style.text)
-            Text("$batteryPct%", fontSize = 10.sp, color = style.text)
+            Text("${batteryStatus.level}%", fontSize = 10.sp, color = style.text)
             Icon(
-                Icons.Filled.BatteryFull,
-                contentDescription = "Battery",
+                imageVector = if (batteryStatus.isCharging) {
+                    Icons.Filled.BatteryChargingFull
+                } else {
+                    Icons.Filled.BatteryFull
+                },
+                contentDescription = if (batteryStatus.isCharging) {
+                    "Battery charging"
+                } else {
+                    "Battery"
+                },
                 tint = style.text,
                 modifier = Modifier.size(11.dp).offset(y = (-1).dp)
             )
@@ -736,9 +746,16 @@ private fun rememberReaderBottomChromeInsets(): ReaderChromeInsets {
     }
 }
 
-private fun getBatteryLevel(context: Context): Int {
+private fun getBatteryStatus(context: Context): BatteryStatus {
     val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-    return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+    val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+        status == BatteryManager.BATTERY_STATUS_FULL
+    return BatteryStatus(
+        level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
+        isCharging = isCharging
+    )
 }
 
 @OptIn(ExperimentalReadiumApi::class)
