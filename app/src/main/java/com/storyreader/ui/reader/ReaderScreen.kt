@@ -103,7 +103,7 @@ private fun EpubPreferences?.isNightTheme() =
 // Status-bar colors that match each reading theme so it blends with the page
 private data class StatusBarStyle(val bg: Color, val text: Color)
 private data class ReaderChromeInsets(val horizontal: Dp, val bottom: Dp)
-private data class ChapterStatus(val label: String, val title: String, val progress: Float?)
+private data class ChapterStatus(val title: String, val progress: Float?)
 private data class BatteryStatus(val level: Int, val isCharging: Boolean)
 
 private val ReaderBottomBarReservedHeight = 25.dp
@@ -383,7 +383,6 @@ fun ReaderScreen(
                 if (uiState.publication != null) {
                     ReaderStatusBar(
                         locator = currentLocator,
-                        toc = uiState.publication!!.tableOfContents,
                         currentChapterLink = currentChapter,
                         style = statusBarStyle,
                         contentPadding = PaddingValues(
@@ -450,7 +449,7 @@ fun ReaderScreen(
         if (showToc) {
             TocSheet(
                 toc = uiState.publication?.tableOfContents.orEmpty(),
-                currentLocator = currentLocator,
+                currentChapter = currentChapter,
                 onNavigate = { link ->
                     viewModel.navigateToLink(link)
                     showToc = false
@@ -527,17 +526,10 @@ private fun BrightnessOverlay(
     }
 }
 
-private fun flattenTocLinks(links: List<Link>): List<Link> = links.flatMap { link ->
-    listOf(link) + flattenTocLinks(link.children)
-}
-
-private fun currentChapterStatus(locator: Locator?, toc: List<Link>, currentChapterLink: Link?): ChapterStatus {
+private fun currentChapterStatus(locator: Locator?, currentChapterLink: Link?): ChapterStatus {
     val progress = locator?.locations?.progression?.toFloat()?.coerceIn(0f, 1f)
-    if (currentChapterLink == null) return ChapterStatus(label = "", title = "", progress = progress)
-    val allLinks = flattenTocLinks(toc)
-    val index = allLinks.indexOf(currentChapterLink).takeIf { it >= 0 }?.plus(1)
+    if (currentChapterLink == null) return ChapterStatus(title = "", progress = progress)
     return ChapterStatus(
-        label = index?.let { "Ch $it" } ?: "",
         title = currentChapterLink.title.orEmpty(),
         progress = progress
     )
@@ -622,7 +614,6 @@ private fun TtsControlsBar(
 @Composable
 private fun ReaderStatusBar(
     locator: Locator?,
-    toc: List<Link>,
     currentChapterLink: Link?,
     style: StatusBarStyle,
     contentPadding: PaddingValues = PaddingValues()
@@ -643,11 +634,8 @@ private fun ReaderStatusBar(
     val progressText = locator?.locations?.totalProgression?.let {
         "${"%.1f".format(it * 100)}%"
     } ?: ""
-    val chapterStatus = currentChapterStatus(locator, toc, currentChapterLink)
-    val chapterLabelTitle = listOfNotNull(
-        chapterStatus.label.takeIf { it.isNotBlank() },
-        chapterStatus.title.takeIf { it.isNotBlank() }
-    ).joinToString("  ")
+    val chapterStatus = currentChapterStatus(locator, currentChapterLink)
+    val chapterLabelTitle = chapterStatus.title
     val chapterProgress = chapterStatus.progress?.let { "${"%.0f".format(it * 100)}%" } ?: ""
 
     Row(

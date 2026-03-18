@@ -19,7 +19,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.readium.r2.shared.publication.Link
-import org.readium.r2.shared.publication.Locator
 
 private data class TocItem(val link: Link, val depth: Int)
 
@@ -30,42 +29,23 @@ private fun flattenToc(toc: List<Link>): List<TocItem> = buildList {
     }
 }
 
-private fun stripSplitSuffix(path: String): String =
-    path.replace(Regex("_split_\\d+"), "")
-
-/** Returns the index of the deepest TOC entry whose href prefix matches the current locator. */
-private fun activeIndex(items: List<TocItem>, locator: Locator?): Int {
-    if (locator == null) return -1
-    val href = locator.href.toString()
-    val hrefNoFragment = href.substringBefore("#")
-    val hrefNormalized = stripSplitSuffix(hrefNoFragment)
-    var bestIndex = -1
-    var bestLength = -1
-    items.forEachIndexed { i, item ->
-        val entryHref = item.link.href.toString().substringBefore("#")
-        val entryNormalized = stripSplitSuffix(entryHref)
-        val matches = href.startsWith(entryHref)
-            || hrefNoFragment.endsWith(entryHref)
-            || hrefNormalized == entryNormalized
-        if (matches && entryHref.length > bestLength) {
-            bestLength = entryHref.length
-            bestIndex = i
-        }
-    }
-    return bestIndex
+/** Returns the index of the TOC entry matching the current chapter link. */
+private fun activeIndex(items: List<TocItem>, currentChapter: Link?): Int {
+    if (currentChapter == null) return -1
+    return items.indexOfFirst { it.link === currentChapter }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TocSheet(
     toc: List<Link>,
-    currentLocator: Locator?,
+    currentChapter: Link?,
     onNavigate: (Link) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
     val items = flattenToc(toc)
-    val activeIdx = activeIndex(items, currentLocator)
+    val activeIdx = activeIndex(items, currentChapter)
     val listState = rememberLazyListState()
 
     // Scroll so the current chapter is visible when the sheet opens
