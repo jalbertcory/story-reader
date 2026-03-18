@@ -24,6 +24,7 @@ interface BookRepository {
     suspend fun updateProgression(bookId: String, progression: Float)
     suspend fun importFromUri(uri: Uri): Result<BookEntity>
     suspend fun getWordCount(bookId: String): Int
+    suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?)
 }
 
 class BookRepositoryImpl(
@@ -51,6 +52,9 @@ class BookRepositoryImpl(
 
     override suspend fun getWordCount(bookId: String): Int =
         bookDao.getWordCountById(bookId) ?: 0
+
+    override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) =
+        bookDao.updateChapterPosition(bookId, title, progression)
 
     override suspend fun importFromUri(uri: Uri): Result<BookEntity> {
         return epubRepository.openPublication(uri).map { publication ->

@@ -49,6 +49,8 @@ class BookRepositoryTest {
             override suspend fun importFromUri(_uri: Uri): Result<BookEntity> =
                 Result.failure(UnsupportedOperationException("not tested here"))
             override suspend fun getWordCount(bookId: String): Int = dao.getWordCountById(bookId) ?: 0
+            override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) =
+                dao.updateChapterPosition(bookId, title, progression)
         }
     }
 

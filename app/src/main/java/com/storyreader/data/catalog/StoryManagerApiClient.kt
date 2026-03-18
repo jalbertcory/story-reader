@@ -106,14 +106,18 @@ class StoryManagerApiClient(
         } else {
             "${baseUrl()}/reader/updates"
         }
+        Log.d(TAG, "fetchUpdates url=$url")
         val request = Request.Builder()
             .url(url)
             .applyAuth()
             .build()
 
         httpClient.newCall(request).execute().use { response ->
+            Log.d(TAG, "fetchUpdates response=${response.code}")
             if (!response.isSuccessful) throw IllegalStateException("Failed to fetch updates: ${response.code}")
-            parseServerBooks(response.body?.string().orEmpty())
+            val body = response.body?.string().orEmpty()
+            Log.d(TAG, "fetchUpdates body=$body")
+            parseServerBooks(body)
         }
     }
 
