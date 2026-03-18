@@ -55,4 +55,7 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE sourceType = 'web'")
     suspend fun getWebBooksForSync(): List<BookEntity>
+
+    @Query("UPDATE books SET lastChapterTitle = :title, lastChapterProgression = :progression WHERE bookId = :bookId")
+    suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?)
 }

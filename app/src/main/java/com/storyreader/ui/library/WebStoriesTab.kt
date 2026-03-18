@@ -32,13 +32,14 @@ import com.storyreader.ui.components.BookCoverThumbnail
 
 private fun formatRelativeTime(epochMillis: Long): String {
     val now = System.currentTimeMillis()
-    val diffHours = ((now - epochMillis) / (1000L * 60 * 60)).toInt()
+    val diffMinutes = ((now - epochMillis) / (1000L * 60)).toInt()
     return when {
-        diffHours < 1 -> "just now"
-        diffHours < 24 -> "${diffHours}h ago"
-        diffHours < 48 -> "yesterday"
-        diffHours < 168 -> "${diffHours / 24} days ago"
-        else -> "${diffHours / 168} weeks ago"
+        diffMinutes < 1 -> "just now"
+        diffMinutes < 60 -> "${diffMinutes}m ago"
+        diffMinutes < 1440 -> "${diffMinutes / 60}h ago"
+        diffMinutes < 2880 -> "yesterday"
+        diffMinutes < 10080 -> "${diffMinutes / 1440} days ago"
+        else -> "${diffMinutes / 10080} weeks ago"
     }
 }
 

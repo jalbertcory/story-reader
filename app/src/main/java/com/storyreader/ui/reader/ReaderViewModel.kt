@@ -250,6 +250,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var currentSessionIsTts: Boolean = false
     private var ttsPositionSaveJob: Job? = null
     private var lastTtsSaveMs: Long = 0L
+    private var isWebBook: Boolean = false
 
     init {
         refreshTtsCatalog()
@@ -264,6 +265,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
             val savedPosition = readingRepository.observeLatestPosition(bookId).firstOrNull()
             val uri = bookId.toUri()
+            val bookEntity = app.database.bookDao().getByIdOnce(bookId)
+            isWebBook = bookEntity?.sourceType == "web"
 
             sessionStartProgression = savedPosition?.let { pos ->
                 try {
@@ -275,10 +278,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
             epubRepository.openPublication(uri)
                 .onSuccess { publication ->
+                    // If no saved locator exists but we have a chapter-level fallback
+                    // (web stories that were updated), resolve the chapter by title.
+                    val initialLocator = savedPosition?.locatorJson
+                        ?: resolveChapterFallback(publication, bookEntity)
+
                     _uiState.value = ReaderUiState(
                         publication = publication,
                         isLoading = false,
-                        initialLocatorJson = savedPosition?.locatorJson
+                        initialLocatorJson = initialLocator
                     )
                     currentSessionId = readingRepository.startSession(bookId)
                     sessionStartMs = System.currentTimeMillis()
@@ -286,7 +294,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     pageTurnTimestamps.clear()
                     ttsManager.initialize(publication, selectedTtsEnginePackageName)
                     refreshTtsCatalog()
-                    val bookEntity = app.database.bookDao().getByIdOnce(bookId)
                     currentCoverArt = bookEntity?.coverUri?.let { path ->
                         try { java.io.File(path).readBytes() } catch (_: Exception) { null }
                     }
@@ -325,6 +332,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     bookId,
                     locator.locations.totalProgression?.toFloat() ?: 0f
                 )
+                // Persist chapter-level fallback for web stories so progress
+                // survives content updates that change the file URI / bookId.
+                val chapterTitle = _currentChapter.value?.title
+                val chapterProgression = locator.locations.progression?.toFloat()
+                if (isWebBook && chapterTitle != null) {
+                    bookRepository.updateChapterPosition(bookId, chapterTitle, chapterProgression)
+                }
             }
         }
     }
@@ -414,6 +428,26 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun flattenTocLinksForChapter(links: List<Link>): List<Link> =
         links.flatMap { link -> listOf(link) + flattenTocLinksForChapter(link.children ?: emptyList()) }
+
+    /**
+     * Build a locator JSON from chapter-level fallback data stored on the BookEntity.
+     * Used when a web story was updated (new file = new bookId) and the detailed
+     * reading position was lost. Matches the saved chapter title against the new TOC
+     * and positions at the saved progression within that chapter.
+     */
+    private fun resolveChapterFallback(publication: Publication, book: BookEntity?): String? {
+        val chapterTitle = book?.lastChapterTitle ?: return null
+        val chapterProgression = book.lastChapterProgression ?: 0f
+        val toc = publication.tableOfContents
+        val allLinks = flattenTocLinksForChapter(toc)
+        val match = allLinks.firstOrNull { it.title.equals(chapterTitle, ignoreCase = true) }
+            ?: return null
+        val locator = publication.locatorFromLink(match) ?: return null
+        val withProgression = locator.copy(
+            locations = locator.locations.copy(progression = chapterProgression.toDouble())
+        )
+        return withProgression.toJSON().toString()
+    }
 
     fun updatePreferences(transform: (EpubPreferences) -> EpubPreferences) {
         val updated = normalizePreferences(transform(_preferences.value))
@@ -777,6 +811,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 bookId,
                 locator.locations.totalProgression?.toFloat() ?: 0f
             )
+            if (isWebBook) {
+                val chapterTitle = _currentChapter.value?.title
+                val chapterProgression = locator.locations.progression?.toFloat()
+                if (chapterTitle != null) {
+                    bookRepository.updateChapterPosition(bookId, chapterTitle, chapterProgression)
+                }
+            }
         }
     }
 
@@ -789,6 +830,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val capturedLocator = _currentLocator.value
         val capturedEndProgression =
             capturedLocator?.locations?.totalProgression?.toFloat() ?: capturedStartProgression
+        val capturedChapterTitle = _currentChapter.value?.title
+        val capturedChapterProgression = capturedLocator?.locations?.progression?.toFloat()
+        val capturedIsWebBook = isWebBook
         val bookId = currentBookId ?: return
         currentSessionId = null
         viewModelScope.launch {
@@ -800,6 +844,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         bookId,
                         capturedEndProgression
                     )
+                    if (capturedIsWebBook && capturedChapterTitle != null) {
+                        bookRepository.updateChapterPosition(
+                            bookId, capturedChapterTitle, capturedChapterProgression
+                        )
+                    }
                 }
                 val wordCount = bookRepository.getWordCount(bookId)
                 readingRepository.finalizeSession(

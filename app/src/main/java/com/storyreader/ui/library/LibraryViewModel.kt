@@ -143,8 +143,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun checkForWebUpdates() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isCheckingUpdates = true)
+            _uiState.value = _uiState.value.copy(isCheckingUpdates = true, error = null)
             app.storyManagerRepository.checkForUpdates()
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        error = "Update check failed: ${e.message}"
+                    )
+                }
             _uiState.value = _uiState.value.copy(isCheckingUpdates = false)
         }
     }

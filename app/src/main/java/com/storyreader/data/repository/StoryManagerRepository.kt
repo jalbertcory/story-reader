@@ -8,10 +8,15 @@ import com.storyreader.data.db.dao.BookDao
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.reader.epub.EpubRepository
 import org.readium.r2.shared.publication.services.cover
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.time.Instant
 import java.util.UUID
+
+private const val TAG = "StoryManagerRepo"
 
 class StoryManagerRepository(
     private val apiClient: StoryManagerApiClient,
@@ -66,7 +71,9 @@ class StoryManagerRepository(
             contentVersion = serverBook.contentVersion,
             contentUpdatedAt = parseServerTimestamp(serverBook.contentUpdatedAt),
             serverWordCount = wordCount,
-            lastSyncedAt = System.currentTimeMillis()
+            lastSyncedAt = System.currentTimeMillis(),
+            lastChapterTitle = existing?.lastChapterTitle,
+            lastChapterProgression = existing?.lastChapterProgression
         )
         bookDao.insert(entity)
         entity
@@ -86,26 +93,36 @@ class StoryManagerRepository(
         imported
     }
 
-    suspend fun checkForUpdates(): Result<Int> = runCatching {
+    suspend fun checkForUpdates(): Result<Int> = withContext(Dispatchers.IO) { runCatching {
         val webBooks = bookDao.getWebBooksForSync()
+        Log.d(TAG, "checkForUpdates: ${webBooks.size} web books")
         if (webBooks.isEmpty()) return@runCatching 0
 
         val maxSynced = webBooks.mapNotNull { it.lastSyncedAt }.maxOrNull()
+        Log.d(TAG, "checkForUpdates: maxSynced=$maxSynced (${maxSynced?.let { Instant.ofEpochMilli(it) }})")
         val serverUpdates = apiClient.fetchUpdates(maxSynced).getOrThrow()
+        Log.d(TAG, "checkForUpdates: server returned ${serverUpdates.size} updates")
 
         val localByServerId = webBooks.associateBy { it.serverBookId }
         var updatedCount = 0
 
         for (serverBook in serverUpdates) {
-            val local = localByServerId[serverBook.id] ?: continue
+            val local = localByServerId[serverBook.id]
+            if (local == null) {
+                Log.d(TAG, "checkForUpdates: serverBookId=${serverBook.id} '${serverBook.title}' not in local DB, skipping")
+                continue
+            }
             val localVersion = local.contentVersion ?: 0
+            Log.d(TAG, "checkForUpdates: '${serverBook.title}' serverVersion=${serverBook.contentVersion} localVersion=$localVersion")
             if (serverBook.contentVersion > localVersion) {
-                importSingleBook(serverBook)
+                Log.d(TAG, "checkForUpdates: updating '${serverBook.title}'")
+                importSingleBook(serverBook).getOrThrow()
                 updatedCount++
             }
         }
+        Log.d(TAG, "checkForUpdates: updated $updatedCount books")
         updatedCount
-    }
+    } }
 
     private fun parseServerTimestamp(timestamp: String): Long = try {
         Instant.parse(timestamp).toEpochMilli()
