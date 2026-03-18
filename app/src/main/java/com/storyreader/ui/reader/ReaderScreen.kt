@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -275,7 +276,8 @@ fun ReaderScreen(
                         .background(statusBarStyle.bg.copy(alpha = 0.92f))
                         .statusBarsPadding()
                         .displayCutoutPadding()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .pointerInput(Unit) { detectTapGestures { /* consume */ } },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -305,6 +307,7 @@ fun ReaderScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .pointerInput(Unit) { detectTapGestures { /* consume */ } }
             ) {
                 // Bottom action bar — shown with top bar when browsing options (TTS stopped)
                 AnimatedVisibility(
@@ -316,7 +319,8 @@ fun ReaderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(statusBarStyle.bg.copy(alpha = 0.92f))
-                            .padding(horizontal = 12.dp, vertical = 1.dp),
+                            .padding(horizontal = 12.dp, vertical = 1.dp)
+                            .pointerInput(Unit) { detectTapGestures { /* consume */ } },
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {

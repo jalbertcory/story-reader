@@ -372,6 +372,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     return true
                 }
                 val viewWidth = nav.publicationView.width.toFloat()
+                val viewHeight = nav.publicationView.height.toFloat()
+                // Ignore taps in the top/bottom margins where system bars live.
+                // This prevents accidental page turns when pulling down the
+                // notification shade or tapping near the bottom status bar.
+                val verticalMargin = viewHeight * 0.07f
+                if (event.point.y < verticalMargin || event.point.y > viewHeight - verticalMargin) {
+                    return true
+                }
                 val edgeSize = viewWidth * 0.3f
                 if (event.point.x in edgeSize..(viewWidth - edgeSize)) {
                     _showBars.value = !_showBars.value
