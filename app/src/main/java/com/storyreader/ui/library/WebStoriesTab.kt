@@ -117,23 +117,18 @@ fun WebStoriesTab(
                             .weight(1f)
                             .padding(start = 12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = book.title,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            val serverWords = book.serverWordCount ?: 0
-                            val newWords = (serverWords - book.wordCount).coerceAtLeast(0)
-                            if (newWords > 0) {
-                                Badge(
-                                    containerColor = Color(0xFF4CAF50),
-                                    contentColor = Color.White
-                                ) {
-                                    Text("+${formatWordCount(newWords)}")
-                                }
+                        Text(
+                            text = book.title,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        val serverWords = book.serverWordCount ?: 0
+                        val newWords = (serverWords - book.wordCount).coerceAtLeast(0)
+                        if (newWords > 0) {
+                            Badge(
+                                containerColor = Color(0xFF4CAF50),
+                                contentColor = Color.White
+                            ) {
+                                Text("+${formatWordCount(newWords)}")
                             }
                         }
                         Text(
@@ -143,7 +138,7 @@ fun WebStoriesTab(
                         )
                         book.contentUpdatedAt?.let { ts ->
                             Text(
-                                text = "Updated ${formatRelativeTime(ts)}",
+                                text = "Content updated ${formatRelativeTime(ts)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

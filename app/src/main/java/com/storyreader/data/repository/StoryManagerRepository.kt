@@ -10,6 +10,7 @@ import com.storyreader.reader.epub.EpubRepository
 import org.readium.r2.shared.publication.services.cover
 import java.io.File
 import java.io.FileOutputStream
+import java.time.Instant
 import java.util.UUID
 
 class StoryManagerRepository(
@@ -63,7 +64,7 @@ class StoryManagerRepository(
             sourceType = serverBook.sourceType,
             serverBookId = serverBook.id,
             contentVersion = serverBook.contentVersion,
-            contentUpdatedAt = System.currentTimeMillis(),
+            contentUpdatedAt = parseServerTimestamp(serverBook.contentUpdatedAt),
             serverWordCount = wordCount,
             lastSyncedAt = System.currentTimeMillis()
         )
@@ -104,6 +105,12 @@ class StoryManagerRepository(
             }
         }
         updatedCount
+    }
+
+    private fun parseServerTimestamp(timestamp: String): Long = try {
+        Instant.parse(timestamp).toEpochMilli()
+    } catch (_: Exception) {
+        System.currentTimeMillis()
     }
 
     private fun saveCover(bitmap: Bitmap?): String? {
