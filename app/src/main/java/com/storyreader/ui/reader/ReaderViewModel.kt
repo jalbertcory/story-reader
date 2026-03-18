@@ -246,7 +246,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var sessionStartMs: Long = 0L
     private var sessionStartProgression: Float = 0f
     private val pageTurnTimestamps = mutableListOf<Long>()
-    private var lastLocatorHref: String? = null
     private var currentSessionIsTts: Boolean = false
     private var ttsPositionSaveJob: Job? = null
     private var lastTtsSaveMs: Long = 0L
@@ -315,13 +314,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
         pageTurnTimestamps.add(System.currentTimeMillis())
 
-        // Resolve chapter only when the base file (ignoring split suffixes) changes
-        val hrefStr = locator.href.toString().substringBefore("#")
-        val normalizedHref = stripSplitSuffix(hrefStr)
-        if (normalizedHref != lastLocatorHref) {
-            lastLocatorHref = normalizedHref
-            resolveCurrentChapter(locator)
-        }
+        resolveCurrentChapter(locator)
         // Don't overwrite TTS position when Android Auto is driving playback
         if (ttsServiceBinder?.isStandaloneTtsActive != true) {
             savePositionJob?.cancel()
@@ -400,7 +393,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun navigateToLink(link: Link) {
         // Store the chapter immediately — we know exactly where we're going
         _currentChapter.value = link
-        lastLocatorHref = stripSplitSuffix(link.href.toString().substringBefore("#"))
         val nav = navigator ?: return
         val pub = _uiState.value.publication ?: return
         val locator = pub.locatorFromLink(link) ?: return
@@ -409,33 +401,37 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /**
-     * Strip `_split_NNN` suffixes that some EPUBs use to break large chapters
-     * into multiple HTML files. E.g. `part0006_split_001.html` → `part0006.html`
-     */
-    private fun stripSplitSuffix(path: String): String =
-        path.replace(Regex("_split_\\d+"), "")
-
     private fun resolveCurrentChapter(locator: Locator) {
-        val toc = _uiState.value.publication?.tableOfContents ?: return
-        val href = locator.href.toString()
-        val hrefNoFragment = href.substringBefore("#")
-        val hrefNormalized = stripSplitSuffix(hrefNoFragment)
-        val allLinks = flattenTocLinksForChapter(toc)
-        val match = allLinks
-            .filter { link ->
-                val linkHref = link.href.toString().substringBefore("#")
-                val linkNormalized = stripSplitSuffix(linkHref)
-                href.startsWith(linkHref)
-                    || hrefNoFragment.endsWith(linkHref)
-                    || hrefNormalized == linkNormalized
-            }
-            .maxByOrNull { it.href.toString().length }
-        _currentChapter.value = match
+        val pub = _uiState.value.publication ?: return
+        val toc = pub.tableOfContents
+        val allLinks = flattenTocLinks(toc)
+        val result = matchChapterByHref(locator, allLinks)
+
+        _currentChapter.value = when (result) {
+            is ChapterMatch.Single -> result.link
+            is ChapterMatch.Multiple -> resolveByProgression(pub, result.candidates, locator)
+            is ChapterMatch.NormalizedFallback -> result.link
+            ChapterMatch.None -> null
+        }
     }
 
-    private fun flattenTocLinksForChapter(links: List<Link>): List<Link> =
-        links.flatMap { link -> listOf(link) + flattenTocLinksForChapter(link.children ?: emptyList()) }
+    private fun resolveByProgression(
+        pub: Publication,
+        candidates: List<Link>,
+        locator: Locator
+    ): Link? {
+        val currentTotal = locator.locations.totalProgression ?: 0.0
+        return candidates
+            .mapNotNull { link ->
+                val entryLocator = pub.locatorFromLink(link) ?: return@mapNotNull null
+                val entryTotal = entryLocator.locations.totalProgression ?: 0.0
+                link to entryTotal
+            }
+            .sortedBy { it.second }
+            .lastOrNull { it.second <= currentTotal + 0.001 }
+            ?.first
+            ?: candidates.firstOrNull()
+    }
 
     /**
      * Build a locator JSON from chapter-level fallback data stored on the BookEntity.
@@ -447,7 +443,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val chapterTitle = book?.lastChapterTitle ?: return null
         val chapterProgression = book.lastChapterProgression ?: 0f
         val toc = publication.tableOfContents
-        val allLinks = flattenTocLinksForChapter(toc)
+        val allLinks = flattenTocLinks(toc)
         val match = allLinks.firstOrNull { it.title.equals(chapterTitle, ignoreCase = true) }
             ?: return null
         val locator = publication.locatorFromLink(match) ?: return null
@@ -785,7 +781,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val publication = _uiState.value.publication ?: return
         val hrefStr = locator.href.toString()
         val toc = publication.tableOfContents
-        val chapterTitle = flattenTocLinksForChapter(toc)
+        val chapterTitle = flattenTocLinks(toc)
             .lastOrNull { hrefStr.startsWith(it.href.toString().substringBefore("#")) }
             ?.title
         val chapterPercent = ((locator.locations.progression ?: 0.0) * 100).toInt()
