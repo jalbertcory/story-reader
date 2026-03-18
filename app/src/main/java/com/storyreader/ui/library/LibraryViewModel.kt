@@ -33,14 +33,6 @@ enum class LibrarySortOption(val label: String) {
     PROGRESS("Progress")
 }
 
-data class WebSeriesGroup(
-    val seriesName: String,
-    val books: List<BookEntity>,
-    val totalServerWordCount: Int,
-    val latestUpdate: Long?,
-    val newWordsSinceLastRead: Int
-)
-
 data class LibrarySeriesGroup(
     val seriesName: String?,
     val books: List<BookEntity>,
@@ -63,8 +55,9 @@ data class LibraryUiState(
         BookImportSource.OPDS
     ),
     val selectedTab: Int = 0,
-    val webSeriesGroups: List<WebSeriesGroup> = emptyList(),
-    val isStoryManagerBackend: Boolean = false
+    val webBooks: List<BookEntity> = emptyList(),
+    val isStoryManagerBackend: Boolean = false,
+    val isCheckingUpdates: Boolean = false
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -90,7 +83,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             ) { books, lastReads, sort, webBooks ->
                 val lastReadMap = lastReads.associate { it.bookId to it.lastReadAt }
                 val sortedBooks = sortBooks(books, lastReadMap, sort)
-                val webGroups = buildWebSeriesGroups(webBooks)
                 val libraryGroups = buildLibraryGroups(sortedBooks, lastReadMap, sort)
                 _uiState.value.copy(
                     books = sortedBooks,
@@ -100,7 +92,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     isLoading = false,
                     hasNextcloudCredentials = app.credentialsManager.hasCredentials,
                     importSources = buildImportSources(app.credentialsManager.hasCredentials),
-                    webSeriesGroups = webGroups,
+                    webBooks = webBooks,
                     isStoryManagerBackend = isStoryManager
                 )
             }.collect { state ->
@@ -146,6 +138,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         error = e.message ?: "Failed to import book"
                     )
                 }
+        }
+    }
+
+    fun checkForWebUpdates() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isCheckingUpdates = true)
+            app.storyManagerRepository.checkForUpdates()
+            _uiState.value = _uiState.value.copy(isCheckingUpdates = false)
         }
     }
 
@@ -232,24 +232,4 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun buildWebSeriesGroups(webBooks: List<BookEntity>): List<WebSeriesGroup> {
-        return webBooks
-            .groupBy { it.series ?: "Unsorted" }
-            .map { (seriesName, books) ->
-                val totalServerWords = books.sumOf { it.serverWordCount ?: 0 }
-                val newWords = books.sumOf { book ->
-                    val serverWords = book.serverWordCount ?: 0
-                    val localWords = book.wordCount
-                    (serverWords - localWords).coerceAtLeast(0)
-                }
-                WebSeriesGroup(
-                    seriesName = seriesName,
-                    books = books,
-                    totalServerWordCount = totalServerWords,
-                    latestUpdate = books.mapNotNull { it.contentUpdatedAt }.maxOrNull(),
-                    newWordsSinceLastRead = newWords
-                )
-            }
-            .sortedBy { it.seriesName.lowercase() }
-    }
 }
