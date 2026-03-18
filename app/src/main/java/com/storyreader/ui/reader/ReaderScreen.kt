@@ -110,13 +110,12 @@ private val ReaderBottomBarReservedHeight = 25.dp
 
 @OptIn(ExperimentalReadiumApi::class)
 private fun readiumCssOverridesFor(preferences: EpubPreferences): RsProperties {
-    val preferredAlign = preferences.textAlign ?: ReadiumTextAlign.START
+    val preferredAlign = preferences.textAlign ?: ReadiumTextAlign.LEFT
     val cssTextAlign = when (preferredAlign) {
         ReadiumTextAlign.LEFT -> "left"
         ReadiumTextAlign.RIGHT -> "right"
         ReadiumTextAlign.JUSTIFY -> "justify"
-        ReadiumTextAlign.START -> "start"
-        else -> "start"
+        else -> "left"
     }
     val cssHyphens = if (preferredAlign == ReadiumTextAlign.JUSTIFY) "auto" else "none"
     return RsProperties(
@@ -171,9 +170,6 @@ fun ReaderScreen(
 
     LaunchedEffect(bookId) { viewModel.openBook(bookId) }
     DisposableEffect(Unit) { onDispose { viewModel.finalizeSession() } }
-    LaunchedEffect(preferences) {
-        viewModel.applyTextLayoutWorkaround()
-    }
 
     // Apply dark theme to app chrome when reading in dark/night mode
     val isDarkReadingTheme = preferences.theme == Theme.DARK || preferences.isNightTheme()
@@ -771,22 +767,10 @@ private fun EpubReaderContent(
     val initialReadiumCss = remember(initialPreferences) {
         readiumCssOverridesFor(initialPreferences)
     }
-    val paginationListener = remember(viewModel) {
-        object : EpubNavigatorFragment.PaginationListener {
-            override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
-                viewModel.onReaderPageLoaded()
-            }
-
-            override fun onPageLoaded() {
-                viewModel.onReaderPageLoaded()
-            }
-        }
-    }
     val fragmentFactory = remember(publication, initialLocator, initialPreferences, initialReadiumCss) {
         EpubNavigatorFactory(publication).createFragmentFactory(
             initialLocator = initialLocator,
             initialPreferences = initialPreferences,
-            paginationListener = paginationListener,
             configuration = EpubNavigatorFragment.Configuration {
                 readiumCssRsProperties = initialReadiumCss
             }

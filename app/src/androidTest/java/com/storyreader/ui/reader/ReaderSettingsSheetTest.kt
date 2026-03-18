@@ -70,7 +70,7 @@ class ReaderSettingsSheetTest {
     @Test
     fun justifyAlignment_disablesPublisherStyles() {
         var latestPreferences = EpubPreferences(
-            textAlign = ReadiumTextAlign.START,
+            textAlign = ReadiumTextAlign.LEFT,
             publisherStyles = true
         )
 

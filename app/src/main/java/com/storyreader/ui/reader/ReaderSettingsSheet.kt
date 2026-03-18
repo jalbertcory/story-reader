@@ -11,7 +11,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
-import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignJustify
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -79,7 +78,6 @@ object ReaderSettingsTestTags {
     const val FONT_SANS = "reader_settings_font_sans"
     const val FONT_MONO = "reader_settings_font_mono"
     const val ALIGN_LEFT = "reader_settings_align_left"
-    const val ALIGN_START = "reader_settings_align_start"
     const val ALIGN_RIGHT = "reader_settings_align_right"
     const val ALIGN_JUSTIFY = "reader_settings_align_justify"
     const val SCROLL_MODE_SWITCH = "reader_settings_scroll_mode_switch"
@@ -277,13 +275,6 @@ fun ReaderSettingsSheet(
                         selected = preferences.textAlign == ReadiumTextAlign.LEFT || preferences.textAlign == null,
                         modifier = Modifier.testTag(ReaderSettingsTestTags.ALIGN_LEFT),
                         onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.LEFT, publisherStyles = false)) }
-                    )
-                    AlignButton(
-                        icon = Icons.Default.FormatAlignCenter,
-                        contentDescription = "Start",
-                        selected = preferences.textAlign == ReadiumTextAlign.START,
-                        modifier = Modifier.testTag(ReaderSettingsTestTags.ALIGN_START),
-                        onClick = { onPreferencesChange(preferences.copy(textAlign = ReadiumTextAlign.START, publisherStyles = false)) }
                     )
                     AlignButton(
                         icon = Icons.AutoMirrored.Filled.FormatAlignRight,
