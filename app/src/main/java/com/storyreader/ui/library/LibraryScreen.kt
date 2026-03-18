@@ -216,7 +216,9 @@ fun LibraryScreen(
                     }
                     uiState.selectedTab == 1 && uiState.isStoryManagerBackend -> {
                         WebStoriesTab(
-                            groups = uiState.webSeriesGroups,
+                            books = uiState.webBooks,
+                            isCheckingUpdates = uiState.isCheckingUpdates,
+                            onCheckForUpdates = { viewModel.checkForWebUpdates() },
                             onBookClick = onBookClick
                         )
                     }
