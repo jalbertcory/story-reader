@@ -368,24 +368,41 @@ body {
  * a direct CSS declaration always beats an inherited value — even when the parent has !important.
  *
  * Fix: apply hyphens directly with !important so epub styles cannot override.
- * Also added blockquote, figcaption, span (missing from original) and word-break/overflow-wrap
- * to prevent any mid-word splitting.
+ * Use a universal selector so no epub element can escape the override.
+ * overflow-wrap must be `normal` (not `anywhere`) because `anywhere` allows
+ * the layout engine to split words at arbitrary points in column/paginated
+ * layouts, which causes visible mid-word breaks like "Trav-eling".
  */
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] body,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] dd,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] div,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] li,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] p,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] blockquote,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] figcaption,
-:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] span {
+:root[style*="readium-advanced-on"][style*="--USER__bodyHyphens"] * {
   -webkit-hyphens: var(--USER__bodyHyphens) !important;
   -moz-hyphens: var(--USER__bodyHyphens) !important;
   -ms-hyphens: var(--USER__bodyHyphens) !important;
   -epub-hyphens: var(--USER__bodyHyphens) !important;
   hyphens: var(--USER__bodyHyphens) !important;
   word-break: normal !important;
-  overflow-wrap: anywhere !important;
+  overflow-wrap: normal !important;
+}
+
+/*
+ * MODIFIED (Story Reader): Hardcoded hyphens: none for non-justify alignments.
+ *
+ * On some Android WebView versions, `hyphens: var(--USER__bodyHyphens) !important`
+ * does not resolve correctly — the var() + !important combination is ignored
+ * and the system hyphenation dictionary (triggered by the epub's lang attribute)
+ * still inserts mid-word breaks. These rules use literal `none` values as a
+ * robust fallback that does not depend on CSS custom property resolution.
+ */
+:root[style*="readium-advanced-on"][style*="--USER__textAlign: left"] *,
+:root[style*="readium-advanced-on"][style*="--USER__textAlign:left"] *,
+:root[style*="readium-advanced-on"][style*="--USER__textAlign: right"] *,
+:root[style*="readium-advanced-on"][style*="--USER__textAlign:right"] * {
+  -webkit-hyphens: none !important;
+  -moz-hyphens: none !important;
+  -ms-hyphens: none !important;
+  -epub-hyphens: none !important;
+  hyphens: none !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
 }
 
 /* ========== User font family ========== */
