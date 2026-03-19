@@ -56,13 +56,13 @@ class StoryManagerApiClient(
             val arr = JSONArray(response.body?.string().orEmpty())
             (0 until arr.length()).map { i ->
                 val obj = arr.getJSONObject(i)
-                val cover = obj.optString("cover_url", null)
+                val cover = obj.optStringOrNull("cover_url")
                 Log.d(TAG, "series=${obj.getString("name")} coverUrl=$cover")
                 SeriesSummary(
                     name = obj.getString("name"),
                     bookCount = obj.getInt("book_count"),
                     totalWords = obj.getInt("total_words"),
-                    latestUpdate = obj.optString("latest_update", null),
+                    latestUpdate = obj.optStringOrNull("latest_update"),
                     coverUrl = cover
                 )
             }
@@ -156,12 +156,19 @@ class StoryManagerApiClient(
         id = obj.getInt("id"),
         title = obj.getString("title"),
         author = obj.getString("author"),
-        series = obj.optString("series", null),
+        series = obj.optStringOrNull("series"),
         sourceType = obj.getString("source_type"),
         contentUpdatedAt = obj.getString("content_updated_at"),
         contentVersion = obj.getInt("content_version"),
         currentWordCount = if (obj.isNull("current_word_count")) null else obj.getInt("current_word_count"),
         downloadUrl = obj.getString("download_url"),
-        coverUrl = obj.optString("cover_url", null)
+        coverUrl = obj.optStringOrNull("cover_url")
     )
 }
+
+/**
+ * Safe alternative to [JSONObject.optString] that returns actual null
+ * instead of the string "null" for JSON null values.
+ */
+private fun JSONObject.optStringOrNull(key: String): String? =
+    if (isNull(key)) null else optString(key)

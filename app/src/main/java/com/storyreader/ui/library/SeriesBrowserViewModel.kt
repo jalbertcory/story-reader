@@ -25,7 +25,12 @@ data class SeriesBrowserUiState(
     val importProgress: Pair<Int, Int>? = null,
     val importSuccessMessage: String? = null,
     val serverBaseUrl: String = "",
-    val authHeader: String? = null
+    val authHeader: String? = null,
+    val expandedSeries: Set<String> = emptySet(),
+    val seriesBooks: Map<String, List<ServerBook>> = emptyMap(),
+    val loadingSeriesBooks: Set<String> = emptySet(),
+    /** Series matched by book-level search — shown expanded with matching books */
+    val seriesMatchedByBook: Map<String, List<ServerBook>> = emptyMap()
 )
 
 class SeriesBrowserViewModel(application: Application) : AndroidViewModel(application) {
@@ -46,6 +51,10 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
         )
     )
     val uiState: StateFlow<SeriesBrowserUiState> = _uiState.asStateFlow()
+
+    /** All books across all series, fetched once for search */
+    private var allSeriesBooks: Map<String, List<ServerBook>> = emptyMap()
+    private var allBooksFetched = false
 
     init {
         loadAll()
@@ -79,14 +88,108 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
                 filteredStandaloneBooks = filterStandaloneBooks(standalone, query),
                 isLoading = false
             )
+
+            // Prefetch all series books in background for search
+            fetchAllSeriesBooks(series)
+        }
+    }
+
+    private suspend fun fetchAllSeriesBooks(series: List<SeriesSummary>) {
+        val result = mutableMapOf<String, List<ServerBook>>()
+        for (s in series) {
+            apiClient.fetchSeriesBooks(s.name).getOrNull()?.let { books ->
+                result[s.name] = books
+            }
+        }
+        allSeriesBooks = result
+        allBooksFetched = true
+        // Re-apply search if there's an active query
+        val query = _uiState.value.searchQuery
+        if (query.isNotBlank()) {
+            applySearch(query)
+        }
+    }
+
+    fun toggleSeriesExpanded(seriesName: String) {
+        val current = _uiState.value.expandedSeries
+        val newExpanded = if (seriesName in current) {
+            current - seriesName
+        } else {
+            current + seriesName
+        }
+        _uiState.value = _uiState.value.copy(expandedSeries = newExpanded)
+
+        // Fetch books for this series if not already loaded
+        if (seriesName in newExpanded && seriesName !in _uiState.value.seriesBooks) {
+            loadSeriesBooks(seriesName)
+        }
+    }
+
+    private fun loadSeriesBooks(seriesName: String) {
+        if (seriesName in _uiState.value.loadingSeriesBooks) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(
+                loadingSeriesBooks = _uiState.value.loadingSeriesBooks + seriesName
+            )
+            // Use cached data if available
+            val books = allSeriesBooks[seriesName]
+                ?: apiClient.fetchSeriesBooks(seriesName).getOrNull()
+                ?: emptyList()
+
+            // Cache for future use
+            if (seriesName !in allSeriesBooks) {
+                allSeriesBooks = allSeriesBooks + (seriesName to books)
+            }
+
+            _uiState.value = _uiState.value.copy(
+                seriesBooks = _uiState.value.seriesBooks + (seriesName to books),
+                loadingSeriesBooks = _uiState.value.loadingSeriesBooks - seriesName
+            )
         }
     }
 
     fun setSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(
-            searchQuery = query,
-            filteredSeries = filterSeries(_uiState.value.allSeries, query),
-            filteredStandaloneBooks = filterStandaloneBooks(_uiState.value.standaloneBooks, query)
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+        applySearch(query)
+    }
+
+    private fun applySearch(query: String) {
+        val state = _uiState.value
+        val filteredSeries = filterSeries(state.allSeries, query)
+        val filteredStandalone = filterStandaloneBooks(state.standaloneBooks, query)
+
+        // Find series where individual books match the query
+        val seriesMatchedByBook = if (query.isNotBlank() && allBooksFetched) {
+            val lowerQuery = query.lowercase()
+            allSeriesBooks.mapNotNull { (seriesName, books) ->
+                // Skip series already matched by name
+                if (filteredSeries.any { it.name == seriesName }) return@mapNotNull null
+                val matchingBooks = books.filter {
+                    it.title.lowercase().contains(lowerQuery) ||
+                        it.author.lowercase().contains(lowerQuery)
+                }
+                if (matchingBooks.isNotEmpty()) seriesName to matchingBooks else null
+            }.toMap()
+        } else {
+            emptyMap()
+        }
+
+        _uiState.value = state.copy(
+            filteredSeries = filteredSeries,
+            filteredStandaloneBooks = filteredStandalone,
+            seriesMatchedByBook = seriesMatchedByBook,
+            // Auto-expand series matched by book search
+            expandedSeries = if (seriesMatchedByBook.isNotEmpty()) {
+                state.expandedSeries + seriesMatchedByBook.keys
+            } else if (query.isBlank()) {
+                state.expandedSeries
+            } else {
+                state.expandedSeries
+            },
+            // Ensure books are loaded for matched series
+            seriesBooks = state.seriesBooks + seriesMatchedByBook.mapValues { (seriesName, _) ->
+                allSeriesBooks[seriesName] ?: state.seriesBooks[seriesName] ?: emptyList()
+            }
         )
     }
 
@@ -118,7 +221,7 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun importStandaloneBook(serverBook: ServerBook) {
+    fun importBook(serverBook: ServerBook) {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(
                 importingBookId = serverBook.id,
