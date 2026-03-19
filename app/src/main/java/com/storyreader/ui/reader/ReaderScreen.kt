@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -266,34 +267,43 @@ fun ReaderScreen(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(statusBarStyle.bg.copy(alpha = 0.92f))
-                        .statusBarsPadding()
-                        .displayCutoutPadding()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                        .pointerInput(Unit) { detectTapGestures { /* consume */ } },
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(36.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .displayCutoutPadding()
+                            .padding(horizontal = 12.dp, vertical = 0.dp)
+                            .pointerInput(Unit) { detectTapGestures { /* consume */ } },
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = statusBarStyle.text,
-                            modifier = Modifier.size(30.dp)
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = statusBarStyle.text,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                        Text(
+                            text = uiState.publication?.metadata?.title ?: "",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = statusBarStyle.text,
+                            modifier = Modifier.padding(start = 4.dp)
                         )
                     }
-                    Text(
-                        text = uiState.publication?.metadata?.title ?: "",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = statusBarStyle.text,
-                        modifier = Modifier.padding(start = 4.dp)
+                    HorizontalDivider(
+                        modifier = Modifier.fillMaxWidth(),
+                        thickness = 2.dp,
+                        color = statusBarStyle.text.copy(alpha = 0.3f)
                     )
                 }
             }
