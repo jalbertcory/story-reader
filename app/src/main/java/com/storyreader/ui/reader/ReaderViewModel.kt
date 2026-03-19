@@ -132,7 +132,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val isNight = prefStore.getBoolean(KEY_IS_NIGHT, false)
         val scroll = if (prefStore.contains(KEY_SCROLL)) prefStore.getBoolean(KEY_SCROLL, false) else null
         val textAlign = when (prefStore.getString(KEY_TEXT_ALIGN, null)) {
-            "START" -> TextAlign.START
             "LEFT" -> TextAlign.LEFT
             "RIGHT" -> TextAlign.RIGHT
             "JUSTIFY" -> TextAlign.JUSTIFY
@@ -192,8 +191,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             if (prefs.scroll != null) putBoolean(KEY_SCROLL, prefs.scroll!!)
             else remove(KEY_SCROLL)
             when (prefs.textAlign) {
-                null -> remove(KEY_TEXT_ALIGN)
-                TextAlign.START -> putString(KEY_TEXT_ALIGN, "START")
                 TextAlign.LEFT -> putString(KEY_TEXT_ALIGN, "LEFT")
                 TextAlign.RIGHT -> putString(KEY_TEXT_ALIGN, "RIGHT")
                 TextAlign.JUSTIFY -> putString(KEY_TEXT_ALIGN, "JUSTIFY")
@@ -474,46 +471,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         return preferences.copy(publisherStyles = publisherStyles)
     }
 
-    fun applyTextLayoutWorkaround() {
-        val nav = navigator ?: return
-        val preferredAlign = _preferences.value.textAlign ?: TextAlign.START
-        val cssTextAlign = when (preferredAlign) {
-            TextAlign.LEFT -> "left"
-            TextAlign.RIGHT -> "right"
-            TextAlign.JUSTIFY -> "justify"
-            TextAlign.START -> "start"
-            else -> "start"
-        }
-        val cssHyphens = if (preferredAlign == TextAlign.JUSTIFY) "auto" else "none"
-        val script = """
-            (function() {
-              var styleId = 'story-reader-text-layout';
-              var style = document.getElementById(styleId);
-              if (!style) {
-                style = document.createElement('style');
-                style.id = styleId;
-                document.head.appendChild(style);
-              }
-              style.textContent = `
-                html, body, p, li, div, dd, blockquote, figcaption {
-                  -webkit-hyphens: $cssHyphens !important;
-                  hyphens: $cssHyphens !important;
-                }
-                body, p, li, div, dd, blockquote, figcaption {
-                  text-align: $cssTextAlign !important;
-                  text-align-last: auto !important;
-                }
-              `;
-            })();
-        """.trimIndent()
-        viewModelScope.launch {
-            nav.evaluateJavascript(script)
-        }
-    }
-
-    fun onReaderPageLoaded() {
-        applyTextLayoutWorkaround()
-    }
 
     fun updateTtsSpeed(value: Float) {
         updateTtsPreferences(_ttsPreferences.value.copy(speed = value.toDouble()))
