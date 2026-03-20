@@ -58,4 +58,19 @@ interface BookDao {
 
     @Query("UPDATE books SET lastChapterTitle = :title, lastChapterProgression = :progression WHERE bookId = :bookId")
     suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?)
+
+    @Query("SELECT DISTINCT series FROM books WHERE series IS NOT NULL AND series != 'null' AND hidden = 0")
+    suspend fun getLocalSeriesNames(): List<String>
+
+    @Query("SELECT serverBookId FROM books WHERE serverBookId IS NOT NULL")
+    suspend fun getAllServerBookIds(): List<Int>
+
+    @Query("UPDATE books SET series = :series WHERE bookId = :bookId")
+    suspend fun updateSeries(bookId: String, series: String)
+
+    @Query("UPDATE books SET serverBookId = :serverBookId WHERE bookId = :bookId")
+    suspend fun updateServerBookId(bookId: String, serverBookId: Int)
+
+    @Query("SELECT * FROM books WHERE (series IS NULL OR series = 'null') AND hidden = 0")
+    suspend fun getBooksWithoutSeries(): List<BookEntity>
 }
