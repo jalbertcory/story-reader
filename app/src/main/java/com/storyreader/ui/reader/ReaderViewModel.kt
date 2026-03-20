@@ -738,11 +738,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private fun pushNowPlayingMetadata(locator: Locator) {
         val binder = ttsServiceBinder ?: return
         val publication = _uiState.value.publication ?: return
-        val hrefStr = locator.href.toString()
         val toc = publication.tableOfContents
-        val chapterTitle = flattenTocLinks(toc)
-            .lastOrNull { hrefStr.startsWith(it.href.toString().substringBefore("#")) }
-            ?.title
+        val allLinks = flattenTocLinks(toc)
+        val chapterMatch = matchChapterByHref(locator, allLinks)
+        val chapterTitle = when (chapterMatch) {
+            is ChapterMatch.Single -> chapterMatch.link.title
+            is ChapterMatch.Multiple -> resolveByProgression(publication, chapterMatch.candidates, locator)?.title
+            is ChapterMatch.NormalizedFallback -> chapterMatch.link.title
+            ChapterMatch.None -> null
+        }
         val chapterPercent = ((locator.locations.progression ?: 0.0) * 100).toInt()
         val bookPercent = ((locator.locations.totalProgression ?: 0.0) * 100).toInt()
         val title = "${chapterTitle ?: "Reading"} · $chapterPercent%"

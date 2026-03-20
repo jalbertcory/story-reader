@@ -42,6 +42,9 @@ interface ReadingSessionDao {
     @Query("SELECT bookId, MAX(startTime) as lastReadAt FROM reading_sessions GROUP BY bookId")
     fun getLastReadTimes(): Flow<List<BookLastRead>>
 
+    @Query("SELECT bookId, MAX(startTime) as lastReadAt FROM reading_sessions GROUP BY bookId")
+    suspend fun getLastReadTimesOnce(): List<BookLastRead>
+
     @Query(
         """
         SELECT rs.bookId

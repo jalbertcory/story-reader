@@ -27,6 +27,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.storyreader.StoryReaderApplication
+import com.storyreader.ui.reader.ChapterMatch
+import com.storyreader.ui.reader.flattenTocLinks
+import com.storyreader.ui.reader.matchChapterByHref
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,7 +40,6 @@ import org.readium.navigator.media.tts.AndroidTtsNavigator
 import org.readium.navigator.media.tts.android.AndroidTtsPreferences
 import org.readium.navigator.media.tts.android.AndroidTtsPreferencesSerializer
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.indexOfFirstWithHref
@@ -171,36 +173,12 @@ class TtsMediaService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            if (parentId != "root") {
-                return Futures.immediateFuture(
-                    LibraryResult.ofItemList(ImmutableList.of(), params)
-                )
-            }
             val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
             serviceScope.launch {
                 try {
-                    val app = application as StoryReaderApplication
-                    val books = app.database.bookDao().getAllOnce()
-                    val items = books.map { book ->
-                        val metaBuilder = MediaMetadata.Builder()
-                            .setTitle(book.title)
-                            .setArtist(book.author)
-                            .setIsPlayable(true)
-                            .setIsBrowsable(false)
-                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                        book.coverUri?.let { path ->
-                            try {
-                                val art = downsampleArtwork(java.io.File(path).readBytes(), BROWSE_ARTWORK_SIZE)
-                                metaBuilder.setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                            } catch (_: Exception) { /* cover file missing */ }
-                        }
-                        MediaItem.Builder()
-                            .setMediaId(book.bookId)
-                            .setMediaMetadata(metaBuilder.build())
-                            .build()
-                    }
+                    val items = buildChildrenFor(parentId)
                     future.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     future.set(LibraryResult.ofItemList(ImmutableList.of(), params))
                 }
             }
@@ -293,6 +271,112 @@ class TtsMediaService : MediaLibraryService() {
         mediaSession = null
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Build the child items for a given parent in the browse tree.
+     *
+     * Browse hierarchy:
+     *   root
+     *   ├── recently_played  → books sorted by last-read time (max 20)
+     *   ├── all_books        → all books alphabetically
+     *   ├── by_author        → folder per author
+     *   │   └── author:<name> → books by that author
+     *   └── by_series        → folder per series
+     *       └── series:<name> → books in that series
+     */
+    private suspend fun buildChildrenFor(parentId: String): List<MediaItem> {
+        val app = application as StoryReaderApplication
+        return when {
+            parentId == "root" -> buildRootCategories()
+            parentId == BROWSE_RECENTLY_PLAYED -> buildRecentlyPlayed(app)
+            parentId == BROWSE_ALL_BOOKS -> buildAllBooks(app)
+            parentId == BROWSE_BY_AUTHOR -> buildAuthorFolders(app)
+            parentId == BROWSE_BY_SERIES -> buildSeriesFolders(app)
+            parentId.startsWith(PREFIX_AUTHOR) -> buildBooksForAuthor(app, parentId.removePrefix(PREFIX_AUTHOR))
+            parentId.startsWith(PREFIX_SERIES) -> buildBooksForSeries(app, parentId.removePrefix(PREFIX_SERIES))
+            else -> emptyList()
+        }
+    }
+
+    private fun buildRootCategories(): List<MediaItem> = listOf(
+        buildFolderItem(BROWSE_RECENTLY_PLAYED, "Recently Played"),
+        buildFolderItem(BROWSE_ALL_BOOKS, "All Books"),
+        buildFolderItem(BROWSE_BY_AUTHOR, "By Author"),
+        buildFolderItem(BROWSE_BY_SERIES, "By Series"),
+    )
+
+    private suspend fun buildRecentlyPlayed(app: StoryReaderApplication): List<MediaItem> {
+        val books = app.database.bookDao().getAllOnce()
+        val lastReadTimes = app.database.readingSessionDao().getLastReadTimesOnce()
+            .associate { it.bookId to it.lastReadAt }
+        // Only include books that have been read, sorted most-recent first
+        return books
+            .filter { lastReadTimes.containsKey(it.bookId) }
+            .sortedByDescending { lastReadTimes[it.bookId] ?: 0L }
+            .take(MAX_RECENT_BOOKS)
+            .map { buildBookItem(it) }
+    }
+
+    private suspend fun buildAllBooks(app: StoryReaderApplication): List<MediaItem> =
+        app.database.bookDao().getAllOnce().map { buildBookItem(it) }
+
+    private suspend fun buildAuthorFolders(app: StoryReaderApplication): List<MediaItem> {
+        val books = app.database.bookDao().getAllOnce()
+        return books.map { it.author }.distinct().sorted().map { author ->
+            buildFolderItem("$PREFIX_AUTHOR$author", author)
+        }
+    }
+
+    private suspend fun buildSeriesFolders(app: StoryReaderApplication): List<MediaItem> {
+        val seriesNames = app.database.bookDao().getLocalSeriesNames().sorted()
+        return seriesNames.map { series ->
+            buildFolderItem("$PREFIX_SERIES$series", series)
+        }
+    }
+
+    private suspend fun buildBooksForAuthor(app: StoryReaderApplication, author: String): List<MediaItem> =
+        app.database.bookDao().getAllOnce()
+            .filter { it.author == author }
+            .map { buildBookItem(it) }
+
+    private suspend fun buildBooksForSeries(app: StoryReaderApplication, series: String): List<MediaItem> =
+        app.database.bookDao().getAllOnce()
+            .filter { it.series == series }
+            .map { buildBookItem(it) }
+
+    private fun buildFolderItem(mediaId: String, title: String): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(mediaId)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                    .build()
+            )
+            .build()
+
+    private fun buildBookItem(book: com.storyreader.data.db.entity.BookEntity): MediaItem {
+        val progressPercent = (book.totalProgression * 100).toInt()
+        val displayTitle = if (progressPercent > 0) "${book.title} · $progressPercent%" else book.title
+        val metaBuilder = MediaMetadata.Builder()
+            .setTitle(displayTitle)
+            .setArtist(book.author)
+            .setIsPlayable(true)
+            .setIsBrowsable(false)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+        book.coverUri?.let { path ->
+            try {
+                val art = downsampleArtwork(java.io.File(path).readBytes(), BROWSE_ARTWORK_SIZE)
+                metaBuilder.setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+            } catch (_: Exception) { /* cover file missing */ }
+        }
+        return MediaItem.Builder()
+            .setMediaId(book.bookId)
+            .setMediaMetadata(metaBuilder.build())
+            .build()
     }
 
     @OptIn(UnstableApi::class)
@@ -454,11 +538,14 @@ class TtsMediaService : MediaLibraryService() {
         val player = standaloneMetadataPlayer ?: return
         val chapterIndex = nav.readingOrder.items.indexOfFirst { it.href == chapterHref }
             .takeIf { it >= 0 } ?: return
-        val hrefStr = chapterHref.toString()
-        val chapterTitle = flattenTocLinks(publication.tableOfContents)
-            .lastOrNull { hrefStr.startsWith(it.href.toString().substringBefore("#")) }
-            ?.title
-            ?: "Chapter ${chapterIndex + 1}"
+        val allLinks = flattenTocLinks(publication.tableOfContents)
+        val chapterMatch = matchChapterByHref(utteranceLocator.href.toString(), allLinks)
+        val chapterTitle = when (chapterMatch) {
+            is ChapterMatch.Single -> chapterMatch.link.title
+            is ChapterMatch.Multiple -> chapterMatch.candidates.lastOrNull()?.title
+            is ChapterMatch.NormalizedFallback -> chapterMatch.link.title
+            ChapterMatch.None -> null
+        } ?: "Chapter ${chapterIndex + 1}"
         val chapterPercent = ((utteranceLocator.locations.progression ?: 0.0) * 100).toInt()
         val bookPercent = ((utteranceLocator.locations.totalProgression ?: 0.0) * 100).toInt()
         val bookTitle = publication.metadata.title
@@ -547,8 +634,6 @@ class TtsMediaService : MediaLibraryService() {
         return prefStore.getString("tts_engine", null)
     }
 
-    private fun flattenTocLinks(links: List<Link>): List<Link> =
-        links.flatMap { link -> listOf(link) + flattenTocLinks(link.children) }
 
     private fun createReaderIntent(): PendingIntent {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or
@@ -559,6 +644,16 @@ class TtsMediaService : MediaLibraryService() {
 
     companion object {
         private const val TAG = "TtsMediaService"
+
+        // Browse tree node IDs
+        private const val BROWSE_RECENTLY_PLAYED = "recently_played"
+        private const val BROWSE_ALL_BOOKS = "all_books"
+        private const val BROWSE_BY_AUTHOR = "by_author"
+        private const val BROWSE_BY_SERIES = "by_series"
+        private const val PREFIX_AUTHOR = "author:"
+        private const val PREFIX_SERIES = "series:"
+        private const val MAX_RECENT_BOOKS = 20
+
         /** Small thumbnail for browse lists where many items are sent at once. */
         private const val BROWSE_ARTWORK_SIZE = 300
         /** Larger artwork for the now-playing screen (Android Auto, Wear OS, notification). */
