@@ -316,6 +316,23 @@ body {
   text-align-last: auto !important;
 }
 
+/*
+ * MODIFIED (Story Reader): Force text-align on all child elements via universal selector.
+ *
+ * Some epub stylesheets set `text-align: justify` directly on <p> or other elements.
+ * The inherited value from the :root rule above cannot override a direct declaration,
+ * even with !important on the parent — the same issue we hit with hyphens.
+ * On certain Android WebView versions this causes text to remain justified
+ * even when the user has selected left alignment.
+ *
+ * Fix: apply text-align directly with !important via a universal selector so no
+ * epub element can escape the override. Excludes blockquote/figcaption to preserve
+ * their typically distinct alignment.
+ */
+:root[style*="readium-advanced-on"][style*="--USER__textAlign"] :not(blockquote):not(figcaption) * {
+  text-align: var(--USER__textAlign) !important;
+}
+
 :root[style*="readium-advanced-on"][dir="rtl"][style*="--USER__textAlign: left"],
 :root[style*="readium-advanced-on"][dir="rtl"][style*="--USER__textAlign:left"],
 :root[style*="readium-advanced-on"][style*="--USER__textAlign: left"] [dir="rtl"],
@@ -393,7 +410,17 @@ body {
  * robust fallback that does not depend on CSS custom property resolution.
  */
 :root[style*="readium-advanced-on"][style*="--USER__textAlign: left"] *,
-:root[style*="readium-advanced-on"][style*="--USER__textAlign:left"] *,
+:root[style*="readium-advanced-on"][style*="--USER__textAlign:left"] * {
+  -webkit-hyphens: none !important;
+  -moz-hyphens: none !important;
+  -ms-hyphens: none !important;
+  -epub-hyphens: none !important;
+  hyphens: none !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  text-align: left !important;
+}
+
 :root[style*="readium-advanced-on"][style*="--USER__textAlign: right"] *,
 :root[style*="readium-advanced-on"][style*="--USER__textAlign:right"] * {
   -webkit-hyphens: none !important;
@@ -403,6 +430,7 @@ body {
   hyphens: none !important;
   word-break: normal !important;
   overflow-wrap: normal !important;
+  text-align: right !important;
 }
 
 /* ========== User font family ========== */
