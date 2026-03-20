@@ -93,6 +93,50 @@ class StoryManagerRepository(
         imported
     }
 
+    suspend fun checkForNewBooks(): Result<Int> = withContext(Dispatchers.IO) { runCatching {
+        // Single request to get all books from the server
+        val allServerBooks = apiClient.fetchAllBooks().getOrThrow()
+        val existingServerIds = bookDao.getAllServerBookIds().toSet()
+        val localSeriesNames = bookDao.getLocalSeriesNames().toSet()
+        val allLocalBooks = bookDao.getAllOnce()
+        Log.d(TAG, "checkForNewBooks: ${allServerBooks.size} server books, ${localSeriesNames.size} local series, ${allLocalBooks.size} local books")
+
+        // Index local books by title+author for duplicate detection
+        val localByTitleAuthor = allLocalBooks.associateBy {
+            "${it.title.lowercase()}|${it.author.lowercase()}"
+        }
+
+        var imported = 0
+
+        // 1. For each server book, check if it already exists locally (by serverBookId or title+author)
+        //    - If matched by title+author but missing serverBookId/series, backfill them
+        //    - If truly new and belongs to a local series, import it
+        for (serverBook in allServerBooks) {
+            val key = "${serverBook.title.lowercase()}|${serverBook.author.lowercase()}"
+            val localMatch = localByTitleAuthor[key]
+
+            if (serverBook.id in existingServerIds) continue
+
+            if (localMatch != null) {
+                // Book exists locally but wasn't linked to the server — backfill
+                Log.d(TAG, "checkForNewBooks: linking '${localMatch.title}' to serverBookId=${serverBook.id}")
+                bookDao.updateServerBookId(localMatch.bookId, serverBook.id)
+                if (localMatch.series == null && serverBook.series != null) {
+                    bookDao.updateSeries(localMatch.bookId, serverBook.series)
+                }
+                continue
+            }
+
+            if (serverBook.series == null || serverBook.series !in localSeriesNames) continue
+            Log.d(TAG, "checkForNewBooks: new book '${serverBook.title}' in series '${serverBook.series}'")
+            importSingleBook(serverBook).getOrNull()
+            imported++
+        }
+
+        Log.d(TAG, "checkForNewBooks: imported $imported new books")
+        imported
+    } }
+
     suspend fun checkForUpdates(): Result<Int> = withContext(Dispatchers.IO) { runCatching {
         val webBooks = bookDao.getWebBooksForSync()
         Log.d(TAG, "checkForUpdates: ${webBooks.size} web books")

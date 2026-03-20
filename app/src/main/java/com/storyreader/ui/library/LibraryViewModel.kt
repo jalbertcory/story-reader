@@ -57,7 +57,9 @@ data class LibraryUiState(
     val selectedTab: Int = 0,
     val webBooks: List<BookEntity> = emptyList(),
     val isStoryManagerBackend: Boolean = false,
-    val isCheckingUpdates: Boolean = false
+    val isCheckingUpdates: Boolean = false,
+    val isCheckingNewBooks: Boolean = false,
+    val newBooksMessage: String? = null
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -151,6 +153,35 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             _uiState.value = _uiState.value.copy(isCheckingUpdates = false)
+        }
+    }
+
+    fun checkForNewBooks() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isCheckingNewBooks = true, error = null, newBooksMessage = null)
+            app.storyManagerRepository.checkForNewBooks()
+                .onSuccess { count ->
+                    _uiState.value = _uiState.value.copy(
+                        newBooksMessage = if (count > 0) "$count new book${if (count > 1) "s" else ""} added"
+                            else "No new books found"
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        error = "Check failed: ${e.message}"
+                    )
+                }
+            _uiState.value = _uiState.value.copy(isCheckingNewBooks = false)
+        }
+    }
+
+    fun clearNewBooksMessage() {
+        _uiState.value = _uiState.value.copy(newBooksMessage = null)
+    }
+
+    fun markAsRead(bookId: String) {
+        viewModelScope.launch {
+            repository.updateProgression(bookId, 1f)
         }
     }
 

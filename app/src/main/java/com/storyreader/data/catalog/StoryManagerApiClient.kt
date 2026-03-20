@@ -99,6 +99,18 @@ class StoryManagerApiClient(
         }
     }
 
+    fun fetchAllBooks(): Result<List<ServerBook>> = runCatching {
+        val request = Request.Builder()
+            .url("${baseUrl()}/reader/books/all")
+            .applyAuth()
+            .build()
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IllegalStateException("Failed to fetch all books: ${response.code}")
+            parseServerBooks(response.body?.string().orEmpty())
+        }
+    }
+
     fun fetchUpdates(since: Long?): Result<List<ServerBook>> = runCatching {
         val url = if (since != null) {
             val isoDate = java.time.Instant.ofEpochMilli(since).toString()

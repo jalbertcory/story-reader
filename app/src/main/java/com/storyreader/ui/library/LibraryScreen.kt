@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -36,8 +37,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
@@ -240,14 +243,49 @@ fun LibraryScreen(
                     }
                 }
                 else -> {
-                    LibraryGroupedList(
-                        groups = uiState.libraryGroups,
-                        lastReadTimes = uiState.lastReadTimes,
-                        onBookClick = onBookClick,
-                        onBookLongClick = { selectedBookForDetail = it }
-                    )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        LibraryGroupedList(
+                            groups = uiState.libraryGroups,
+                            lastReadTimes = uiState.lastReadTimes,
+                            onBookClick = onBookClick,
+                            onBookLongClick = { selectedBookForDetail = it },
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (uiState.isStoryManagerBackend) {
+                            Button(
+                                onClick = { viewModel.checkForNewBooks() },
+                                enabled = !uiState.isCheckingNewBooks,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                if (uiState.isCheckingNewBooks) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text("Check for New Books")
+                                }
+                            }
+                        }
+                    }
                 }
             }
+
+                uiState.newBooksMessage?.let { message ->
+                    Snackbar(
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                        action = {
+                            TextButton(onClick = { viewModel.clearNewBooksMessage() }) {
+                                Text("OK")
+                            }
+                        }
+                    ) {
+                        Text(message)
+                    }
+                }
 
                 uiState.error?.let { error ->
                     Text(
@@ -275,11 +313,13 @@ private fun LibraryGroupedList(
     groups: List<LibrarySeriesGroup>,
     lastReadTimes: Map<String, Long>,
     onBookClick: (String) -> Unit,
-    onBookLongClick: (BookEntity) -> Unit
+    onBookLongClick: (BookEntity) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val expandedSeries = remember { mutableStateMapOf<String, Boolean>() }
 
     LazyColumn(
+        modifier = modifier,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {

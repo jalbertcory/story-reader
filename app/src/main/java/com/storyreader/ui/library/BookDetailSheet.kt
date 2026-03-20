@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -85,6 +86,10 @@ fun BookDetailSheet(
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
+                        DetailRow("Series", book.series ?: "(none)")
+                        if (book.serverBookId != null) {
+                            DetailRow("Server ID", "${book.serverBookId}")
+                        }
                         if (book.wordCount > 0) {
                             DetailRow("Total words", formatWordCount(book.wordCount.toLong()))
                         }
@@ -150,10 +155,24 @@ fun BookDetailSheet(
                 }
             }
 
-            // Remove button
+            // Action buttons
             item {
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(4.dp))
+                if (book.totalProgression < 1f) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.markAsRead(book.bookId)
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Mark as Read")
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
                 OutlinedButton(
                     onClick = { showRemoveConfirm = true },
                     modifier = Modifier.fillMaxWidth(),
