@@ -190,7 +190,7 @@ class TtsMediaService : MediaLibraryService() {
                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
                         book.coverUri?.let { path ->
                             try {
-                                val art = downsampleArtwork(java.io.File(path).readBytes())
+                                val art = downsampleArtwork(java.io.File(path).readBytes(), BROWSE_ARTWORK_SIZE)
                                 metaBuilder.setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                             } catch (_: Exception) { /* cover file missing */ }
                         }
@@ -559,20 +559,23 @@ class TtsMediaService : MediaLibraryService() {
 
     companion object {
         private const val TAG = "TtsMediaService"
-        private const val MAX_ARTWORK_SIZE = 300
+        /** Small thumbnail for browse lists where many items are sent at once. */
+        private const val BROWSE_ARTWORK_SIZE = 300
+        /** Larger artwork for the now-playing screen (Android Auto, Wear OS, notification). */
+        private const val NOW_PLAYING_ARTWORK_SIZE = 800
 
         /**
-         * Downscale cover art bytes to fit within [MAX_ARTWORK_SIZE]x[MAX_ARTWORK_SIZE]
+         * Downscale cover art bytes to fit within [maxSize]x[maxSize]
          * so the MediaSession metadata stays well under the 1 MB Binder transaction limit.
          */
-        fun downsampleArtwork(raw: ByteArray): ByteArray {
+        fun downsampleArtwork(raw: ByteArray, maxSize: Int = NOW_PLAYING_ARTWORK_SIZE): ByteArray {
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
             val w = opts.outWidth
             val h = opts.outHeight
-            if (w <= MAX_ARTWORK_SIZE && h <= MAX_ARTWORK_SIZE) return raw
+            if (w <= maxSize && h <= maxSize) return raw
 
-            val scale = maxOf(w, h).toFloat() / MAX_ARTWORK_SIZE
+            val scale = maxOf(w, h).toFloat() / maxSize
             val sampleSize = Integer.highestOneBit(scale.toInt().coerceAtLeast(1))
             val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
             val bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size, decodeOpts) ?: return raw
