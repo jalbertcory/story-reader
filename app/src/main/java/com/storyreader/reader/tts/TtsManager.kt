@@ -1,6 +1,9 @@
 package com.storyreader.reader.tts
 
 import android.app.Application
+import androidx.media3.common.MediaMetadata
+import org.readium.navigator.media.common.MediaMetadataFactory
+import org.readium.navigator.media.common.MediaMetadataProvider
 import org.readium.navigator.media.tts.TtsNavigator
 import org.readium.navigator.media.tts.TtsNavigatorFactory
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
@@ -35,7 +38,8 @@ class TtsManager(private val application: Application) {
                     // Keep utterances sentence-sized for smooth playback while still allowing
                     // token-level range callbacks from the engine for visual highlighting.
                     DefaultTextContentTokenizer(TextUnit.Sentence, language)
-                }
+                },
+                metadataProvider = LightweightMetadataProvider()
             )
             true
         } catch (e: Exception) {
@@ -69,4 +73,43 @@ class TtsManager(private val application: Application) {
             AndroidTtsEngine.requestInstallVoice(context)
         }
     }
+}
+
+/**
+ * A [MediaMetadataProvider] that omits cover art from per-resource metadata.
+ *
+ * Readium's [DefaultMediaMetadataProvider] embeds cover art bytes into every MediaItem
+ * (one per chapter). The full timeline is serialized into Binder transactions to connected
+ * controllers (Wear OS, Android Auto), easily exceeding the 1 MB limit for books with many
+ * chapters. We supply our own artwork via [TtsMediaService.NowPlayingPlayer] so the
+ * per-resource copies are unnecessary.
+ */
+@ExperimentalReadiumApi
+private class LightweightMetadataProvider : MediaMetadataProvider {
+    override fun createMetadataFactory(publication: Publication): MediaMetadataFactory {
+        val title = publication.metadata.title
+        val author = publication.metadata.authors
+            .firstOrNull { it.name.isNotBlank() }?.name
+        return LightweightMetadataFactory(title, author)
+    }
+}
+
+@ExperimentalReadiumApi
+private class LightweightMetadataFactory(
+    private val title: String?,
+    private val author: String?,
+) : MediaMetadataFactory {
+
+    override suspend fun publicationMetadata(): MediaMetadata =
+        MediaMetadata.Builder()
+            .setTitle(title)
+            .apply { author?.let { setArtist(it) } }
+            .build()
+
+    override suspend fun resourceMetadata(index: Int): MediaMetadata =
+        MediaMetadata.Builder()
+            .setTrackNumber(index)
+            .setTitle(title)
+            .apply { author?.let { setArtist(it) } }
+            .build()
 }

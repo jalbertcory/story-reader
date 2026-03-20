@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
@@ -188,10 +190,8 @@ class TtsMediaService : MediaLibraryService() {
                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
                         book.coverUri?.let { path ->
                             try {
-                                metaBuilder.setArtworkData(
-                                    java.io.File(path).readBytes(),
-                                    MediaMetadata.PICTURE_TYPE_FRONT_COVER
-                                )
+                                val art = downsampleArtwork(java.io.File(path).readBytes())
+                                metaBuilder.setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                             } catch (_: Exception) { /* cover file missing */ }
                         }
                         MediaItem.Builder()
@@ -352,7 +352,7 @@ class TtsMediaService : MediaLibraryService() {
         standaloneBookId = bookId
         val bookEntity = app.database.bookDao().getByIdOnce(bookId)
         standaloneCoverArt = bookEntity?.coverUri?.let { path ->
-            try { java.io.File(path).readBytes() } catch (_: Exception) { null }
+            try { downsampleArtwork(java.io.File(path).readBytes()) } catch (_: Exception) { null }
         }
 
         // Create session with a wrapper that allows dynamic metadata updates
@@ -559,6 +559,29 @@ class TtsMediaService : MediaLibraryService() {
 
     companion object {
         private const val TAG = "TtsMediaService"
+        private const val MAX_ARTWORK_SIZE = 300
+
+        /**
+         * Downscale cover art bytes to fit within [MAX_ARTWORK_SIZE]x[MAX_ARTWORK_SIZE]
+         * so the MediaSession metadata stays well under the 1 MB Binder transaction limit.
+         */
+        fun downsampleArtwork(raw: ByteArray): ByteArray {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
+            val w = opts.outWidth
+            val h = opts.outHeight
+            if (w <= MAX_ARTWORK_SIZE && h <= MAX_ARTWORK_SIZE) return raw
+
+            val scale = maxOf(w, h).toFloat() / MAX_ARTWORK_SIZE
+            val sampleSize = Integer.highestOneBit(scale.toInt().coerceAtLeast(1))
+            val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size, decodeOpts) ?: return raw
+
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            bitmap.recycle()
+            return out.toByteArray()
+        }
         const val ACTION_BIND = "com.storyreader.reader.tts.TtsMediaService"
 
         suspend fun bind(application: Application): LocalBinder? {

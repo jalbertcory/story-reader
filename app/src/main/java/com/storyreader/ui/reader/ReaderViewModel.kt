@@ -291,7 +291,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     ttsManager.initialize(publication, selectedTtsEnginePackageName)
                     refreshTtsCatalog()
                     currentCoverArt = bookEntity?.coverUri?.let { path ->
-                        try { java.io.File(path).readBytes() } catch (_: Exception) { null }
+                        try {
+                            TtsMediaService.downsampleArtwork(java.io.File(path).readBytes())
+                        } catch (_: Exception) { null }
                     }
                     bindTtsServiceForAutoRequests(bookId)
                 }
