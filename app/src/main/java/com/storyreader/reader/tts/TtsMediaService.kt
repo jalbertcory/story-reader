@@ -185,6 +185,22 @@ class TtsMediaService : MediaLibraryService() {
             return future
         }
 
+        /**
+         * Called by Media3 when the legacy compatibility layer receives playFromMediaId
+         * (which is what Android Auto sends when tapping a playable browse item).
+         * The default implementation throws UnsupportedOperationException, silently
+         * preventing book switches. We resolve the items so Media3 proceeds to
+         * onSetMediaItems where the actual book-switching logic lives.
+         */
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>
+        ): ListenableFuture<List<MediaItem>> {
+            Log.d(TAG, "onAddMediaItems: bookId=${mediaItems.firstOrNull()?.mediaId}")
+            return Futures.immediateFuture(mediaItems)
+        }
+
         @OptIn(UnstableApi::class)
         override fun onSetMediaItems(
             mediaSession: MediaSession,
@@ -200,9 +216,7 @@ class TtsMediaService : MediaLibraryService() {
 
             // If the phone UI has this book open, let the ViewModel handle TTS
             // (gives highlight sync, visual page-turning, unified position tracking).
-            val handled = binder.ttsPlaybackRequestListener?.onTtsPlaybackRequested(bookId) == true
-            if (handled) {
-                Log.d(TAG, "onSetMediaItems: delegated to ViewModel")
+            if (binder.ttsPlaybackRequestListener?.onTtsPlaybackRequested(bookId) == true) {
                 return Futures.immediateFuture(
                     MediaSession.MediaItemsWithStartPosition(
                         mediaItems, startIndex, startPositionMs
@@ -212,19 +226,25 @@ class TtsMediaService : MediaLibraryService() {
 
             // Cancel any in-flight startup so two coroutines don't race
             standaloneStartupJob?.cancel()
-            this@TtsMediaService.mediaSession?.setPlayer(stubPlayer)
             cleanupStandalonePlayback()
 
+            // Use a deferred future so Android Auto stays on the browse screen
+            // until the new book is actually loaded and ready to play.
+            val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
             standaloneStartupJob = serviceScope.launch {
-                startStandalonePlayback(bookId)
+                val ok = startStandalonePlayback(bookId)
+                if (ok) {
+                    future.set(
+                        MediaSession.MediaItemsWithStartPosition(
+                            mediaItems, startIndex, startPositionMs
+                        )
+                    )
+                } else {
+                    future.setException(IllegalStateException("Failed to start playback for $bookId"))
+                }
             }
 
-            // Resolve immediately — actual playback starts inside the coroutine.
-            return Futures.immediateFuture(
-                MediaSession.MediaItemsWithStartPosition(
-                    mediaItems, startIndex, startPositionMs
-                )
-            )
+            return future
         }
 
         @OptIn(UnstableApi::class)
@@ -376,6 +396,12 @@ class TtsMediaService : MediaLibraryService() {
         return MediaItem.Builder()
             .setMediaId(book.bookId)
             .setMediaMetadata(metaBuilder.build())
+            .setRequestMetadata(
+                MediaItem.RequestMetadata.Builder()
+                    .setMediaUri(book.bookId.toUri())
+                    .build()
+            )
+            .setUri(book.bookId)
             .build()
     }
 
@@ -405,11 +431,15 @@ class TtsMediaService : MediaLibraryService() {
     }
 
     @OptIn(UnstableApi::class)
-    private suspend fun startStandalonePlayback(bookId: String) {
+    private suspend fun startStandalonePlayback(bookId: String): Boolean {
         Log.d(TAG, "startStandalonePlayback: bookId=$bookId")
         val app = application as StoryReaderApplication
         val uri = bookId.toUri()
-        val publication = app.epubRepository.openPublication(uri).getOrNull() ?: return
+        val publication = app.epubRepository.openPublication(uri).getOrNull()
+        if (publication == null) {
+            Log.e(TAG, "startStandalonePlayback: failed to open publication for $bookId")
+            return false
+        }
 
         // Get last reading position
         val positionDao = app.database.readingPositionDao()
@@ -428,7 +458,11 @@ class TtsMediaService : MediaLibraryService() {
         // Initialize and start TTS
         val manager = TtsManager(application as Application)
         manager.initialize(publication, enginePkg)
-        val nav = manager.start(ttsLocator, prefs) ?: return
+        val nav = manager.start(ttsLocator, prefs)
+        if (nav == null) {
+            Log.e(TAG, "startStandalonePlayback: TtsManager.start returned null for $bookId")
+            return false
+        }
 
         standaloneTtsManager = manager
         standaloneTtsNavigator = nav
@@ -466,6 +500,8 @@ class TtsMediaService : MediaLibraryService() {
         }
 
         nav.play()
+        Log.d(TAG, "startStandalonePlayback: started $bookId")
+        return true
     }
 
     private fun cleanupStandalonePlayback() {
