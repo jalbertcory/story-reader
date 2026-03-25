@@ -66,6 +66,7 @@ class StoryManagerRepository(
             wordCount = existing?.wordCount ?: wordCount,
             hidden = false,
             series = serverBook.series,
+            seriesIndex = serverBook.seriesIndex,
             sourceType = serverBook.sourceType,
             serverBookId = serverBook.id,
             contentVersion = serverBook.contentVersion,
@@ -108,14 +109,26 @@ class StoryManagerRepository(
 
         var imported = 0
 
+        // Index local books by serverBookId for series order updates
+        val localByServerId = allLocalBooks.filter { it.serverBookId != null }
+            .associateBy { it.serverBookId }
+
         // 1. For each server book, check if it already exists locally (by serverBookId or title+author)
         //    - If matched by title+author but missing serverBookId/series, backfill them
         //    - If truly new and belongs to a local series, import it
+        //    - If already linked, update series order if changed
         for (serverBook in allServerBooks) {
             val key = "${serverBook.title.lowercase()}|${serverBook.author.lowercase()}"
             val localMatch = localByTitleAuthor[key]
 
-            if (serverBook.id in existingServerIds) continue
+            if (serverBook.id in existingServerIds) {
+                // Already linked — update series index if changed
+                val local = localByServerId[serverBook.id]
+                if (local != null && local.seriesIndex != serverBook.seriesIndex) {
+                    bookDao.updateSeriesIndex(local.bookId, serverBook.seriesIndex)
+                }
+                continue
+            }
 
             if (localMatch != null) {
                 // Book exists locally but wasn't linked to the server — backfill
@@ -124,6 +137,7 @@ class StoryManagerRepository(
                 if (localMatch.series == null && serverBook.series != null) {
                     bookDao.updateSeries(localMatch.bookId, serverBook.series)
                 }
+                bookDao.updateSeriesIndex(localMatch.bookId, serverBook.seriesIndex)
                 continue
             }
 

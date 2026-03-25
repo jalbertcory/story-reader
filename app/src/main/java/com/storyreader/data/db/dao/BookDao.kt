@@ -73,4 +73,7 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE (series IS NULL OR series = 'null') AND hidden = 0")
     suspend fun getBooksWithoutSeries(): List<BookEntity>
+
+    @Query("UPDATE books SET seriesIndex = :seriesIndex WHERE bookId = :bookId")
+    suspend fun updateSeriesIndex(bookId: String, seriesIndex: Float?)
 }

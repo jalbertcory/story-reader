@@ -27,6 +27,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.storyreader.StoryReaderApplication
+import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.ui.reader.ChapterMatch
 import com.storyreader.ui.reader.flattenTocLinks
 import com.storyreader.ui.reader.matchChapterByHref
@@ -343,6 +344,7 @@ class TtsMediaService : MediaLibraryService() {
     private suspend fun buildBooksForSeries(app: StoryReaderApplication, series: String): List<MediaItem> =
         app.database.bookDao().getAllOnce()
             .filter { it.series == series }
+            .sortedWith(compareBy<BookEntity> { it.seriesIndex == null }.thenBy { it.seriesIndex }.thenBy { it.title })
             .map { buildBookItem(it) }
 
     private fun buildFolderItem(mediaId: String, title: String): MediaItem =

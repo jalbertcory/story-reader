@@ -20,5 +20,6 @@ data class BookEntity(
     val serverWordCount: Int? = null,
     val lastSyncedAt: Long? = null,
     val lastChapterTitle: String? = null,
-    val lastChapterProgression: Float? = null
+    val lastChapterProgression: Float? = null,
+    val seriesIndex: Float? = null
 )
