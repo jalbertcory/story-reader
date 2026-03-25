@@ -122,6 +122,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         LibrarySortOption.PROGRESS -> books.sortedByDescending { it.totalProgression }
     }
 
+    private fun sortSeriesBooks(books: List<BookEntity>): List<BookEntity> =
+        books.sortedWith(compareBy<BookEntity> { it.seriesIndex == null }
+            .thenBy { it.seriesIndex }
+            .thenBy { it.title.lowercase() })
+
     fun refreshCredentials() {
         _uiState.value = _uiState.value.copy(
             hasNextcloudCredentials = app.credentialsManager.hasCredentials,
@@ -230,7 +235,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
                 LibrarySeriesGroup(
                     seriesName = seriesName,
-                    books = sortBooks(books, lastReadTimes, sort),
+                    books = sortSeriesBooks(books),
                     lastReadTime = groupLastRead,
                     totalWordCount = totalWordCount,
                     totalProgression = if (totalWordCount > 0) {
