@@ -52,6 +52,8 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.Language
 import java.util.Locale
+import com.storyreader.reader.tts.enhanceLocatorForTts
+import com.storyreader.reader.tts.selectTtsStartLocator
 
 enum class TtsPlaybackState { STOPPED, PLAYING, PAUSED }
 
@@ -222,6 +224,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private var ttsServiceBinder: TtsMediaService.LocalBinder? = null
     private var ttsJob: Job? = null
     private var ttsResumeLocator: Locator? = null
+    private var manualPageStartLocator: Locator? = null
+    private var preferManualTtsStart: Boolean = false
 
     private val _currentLocator = MutableStateFlow<Locator?>(null)
     val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
@@ -255,6 +259,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun openBook(bookId: String) {
         if (currentBookId == bookId) return
         currentBookId = bookId
+        ttsResumeLocator = null
+        manualPageStartLocator = null
+        preferManualTtsStart = false
 
         viewModelScope.launch {
             _uiState.value = ReaderUiState(isLoading = true)
@@ -310,6 +317,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         _currentLocator.value = locator
         if (_ttsState.value == TtsPlaybackState.STOPPED) {
             ttsResumeLocator = null
+            preferManualTtsStart = true
+            captureManualPageStartLocator(locator)
         }
         pageTurnTimestamps.add(System.currentTimeMillis())
 
@@ -411,6 +420,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             is ChapterMatch.Multiple -> resolveByProgression(pub, result.candidates, locator)
             is ChapterMatch.NormalizedFallback -> result.link
             ChapterMatch.None -> null
+        }
+    }
+
+    private fun captureManualPageStartLocator(fallback: Locator) {
+        viewModelScope.launch {
+            manualPageStartLocator =
+                (navigator as? VisualNavigator)?.firstVisibleElementLocator() ?: fallback
         }
     }
 
@@ -575,15 +591,24 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
         ttsJob = viewModelScope.launch {
             val bookId = currentBookId ?: return@launch
+            val publication = _uiState.value.publication ?: return@launch
             currentSessionId = readingRepository.startSession(bookId, isTts = true)
             sessionStartMs = System.currentTimeMillis()
             currentSessionIsTts = true
             pageTurnTimestamps.clear()
             sessionStartProgression = _currentLocator.value?.locations?.totalProgression?.toFloat() ?: sessionStartProgression
 
-            val startLocator = ttsResumeLocator
-                ?: (navigator as? VisualNavigator)?.firstVisibleElementLocator()
-                ?: _currentLocator.value
+            val visibleLocator = (navigator as? VisualNavigator)?.firstVisibleElementLocator()
+            val rawStartLocator = selectTtsStartLocator(
+                preferManualPage = preferManualTtsStart,
+                manualPageLocator = manualPageStartLocator,
+                resumeLocator = ttsResumeLocator,
+                visibleLocator = visibleLocator,
+                currentLocator = _currentLocator.value
+            )
+            val startLocator = rawStartLocator?.let { publication.enhanceLocatorForTts(it) }
+            manualPageStartLocator = null
+            preferManualTtsStart = false
             val nav = ttsManager.start(startLocator, _ttsPreferences.value)
             if (nav == null) {
                 startManualSession(bookId)
