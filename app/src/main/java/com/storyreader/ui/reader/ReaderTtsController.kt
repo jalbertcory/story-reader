@@ -11,6 +11,7 @@ import com.storyreader.reader.tts.TtsHighlightSynchronizer
 import com.storyreader.reader.tts.TtsManager
 import com.storyreader.reader.tts.TtsMediaService
 import com.storyreader.reader.tts.TtsVoiceOption
+import com.storyreader.reader.tts.resolveTtsStartLocator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,12 +32,219 @@ import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.Language
+import org.json.JSONObject
 import java.util.Locale
 
 private const val TAG = "ReaderTtsController"
+private const val TRACE_TAG = "TTS_TRACE"
+private const val TRACE_BUILD = "codex/tts-page-start 2026-03-26-c"
 private const val KEY_TTS_PREFS = "tts_prefs_json"
 private const val KEY_TTS_ENGINE = "tts_engine"
 private const val DEFAULT_TTS_SPEED = 1.5
+private const val PAGE_START_CANDIDATE_SCRIPT = """
+(() => {
+  const selectors = [
+    'p', 'li', 'blockquote', 'pre', 'figcaption', 'dt', 'dd',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+  ];
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+  const hasReadableText = (element) => {
+    const text = (element.innerText || '').replace(/\s+/g, ' ').trim();
+    return text.length > 0 ? text : null;
+  };
+
+  const normalizeText = (text) => (text || '').replace(/\s+/g, ' ').trim();
+
+  const normalizeRect = (rect) => ({
+    top: rect.top,
+    bottom: rect.bottom,
+    left: rect.left,
+    right: rect.right,
+    width: rect.width,
+    height: rect.height
+  });
+
+  const rectIntersectsViewport = (rect) =>
+    rect.bottom > 0 && rect.top < viewportHeight &&
+    rect.right > 0 && rect.left < viewportWidth;
+
+  const rectFullyInViewport = (rect) =>
+    rect.top >= 0 && rect.bottom <= viewportHeight &&
+    rect.left >= 0 && rect.right <= viewportWidth;
+
+  const rectStartsInViewport = (rect) =>
+    rect.top >= 0 && rect.top < viewportHeight &&
+    rect.left >= 0 && rect.left < viewportWidth;
+
+  const cssPath = (element) => {
+    if (!element) return null;
+    if (element.id) return '#' + element.id;
+    const segments = [];
+    let current = element;
+    while (current && current.nodeType === Node.ELEMENT_NODE && current.tagName.toLowerCase() !== 'html') {
+      const tag = current.tagName.toLowerCase();
+      let index = 1;
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName === current.tagName) index += 1;
+        sibling = sibling.previousElementSibling;
+      }
+      segments.unshift(tag + ':nth-of-type(' + index + ')');
+      current = current.parentElement;
+    }
+    return segments.join(' > ');
+  };
+
+  const rangeForPoint = (x, y) => {
+    if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos && pos.offsetNode) {
+        const range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+        return range;
+      }
+    }
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(x, y);
+      if (range) return range;
+    }
+    return null;
+  };
+
+  const extractSentenceHint = (element, visibleRect) => {
+    if (!element || !visibleRect) return null;
+
+    const probeXs = [];
+    const leftStart = Math.max(visibleRect.left + 2, 2);
+    const leftEnd = Math.min(visibleRect.right - 2, leftStart + 96);
+    for (let x = leftStart; x <= leftEnd; x += 12) probeXs.push(x);
+    if (probeXs.length === 0) probeXs.push(leftStart);
+
+    const probeYs = [];
+    const topStart = Math.max(visibleRect.top + 2, 2);
+    const topEnd = Math.min(visibleRect.bottom - 2, topStart + 24);
+    for (let y = topStart; y <= topEnd; y += 6) probeYs.push(y);
+    if (probeYs.length === 0) probeYs.push(topStart);
+
+    let pointRange = null;
+    for (const y of probeYs) {
+      for (const x of probeXs) {
+        const candidate = rangeForPoint(x, y);
+        if (!candidate) continue;
+        const container = candidate.startContainer.nodeType === Node.TEXT_NODE
+          ? candidate.startContainer.parentElement
+          : candidate.startContainer;
+        if (container && element.contains(container)) {
+          pointRange = candidate;
+          break;
+        }
+      }
+      if (pointRange) break;
+    }
+    if (!pointRange) return null;
+
+    const blockRange = document.createRange();
+    blockRange.selectNodeContents(element);
+
+    const remainingRange = blockRange.cloneRange();
+    remainingRange.setStart(pointRange.startContainer, pointRange.startOffset);
+    const remainingText = normalizeText(remainingRange.toString());
+    if (!remainingText) return null;
+
+    const beforeRange = blockRange.cloneRange();
+    beforeRange.setEnd(pointRange.startContainer, pointRange.startOffset);
+    const beforeText = normalizeText(beforeRange.toString());
+    const beforeTail = beforeText.slice(-1);
+    const startsMidSentence = !!beforeTail && !/[.!?]/.test(beforeTail);
+
+    const sentences = (remainingText.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [])
+      .map(normalizeText)
+      .filter(Boolean);
+    if (sentences.length === 0) return null;
+
+    const sentence = startsMidSentence && sentences.length > 1
+      ? sentences[1]
+      : sentences[0];
+    return sentence ? sentence.slice(0, 160) : null;
+  };
+
+  const candidates = Array.from(document.querySelectorAll(selectors.join(',')));
+  let firstVisible = null;
+  let startsOnPage = null;
+  let firstCompleteBlock = null;
+  let sentenceStart = null;
+
+  for (const element of candidates) {
+    const text = hasReadableText(element);
+    if (!text) continue;
+
+    const rects = Array.from(element.getClientRects())
+      .map(normalizeRect)
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    if (rects.length === 0) continue;
+
+    const visibleRects = rects.filter(rectIntersectsViewport);
+    if (visibleRects.length === 0) continue;
+
+    const firstRect = rects[0];
+    const firstVisibleRect = visibleRects[0];
+    const firstRectStartsOnPage = rectStartsInViewport(firstRect);
+
+    const payload = {
+      kind: 'visible',
+      cssSelector: cssPath(element),
+      text: text.slice(0, 160),
+      top: firstVisibleRect.top,
+      bottom: firstVisibleRect.bottom,
+      left: firstVisibleRect.left,
+      right: firstVisibleRect.right,
+      firstRectTop: firstRect.top,
+      firstRectLeft: firstRect.left,
+      startedOnPage: rectStartsInViewport(firstRect)
+    };
+
+    if (!firstVisible) firstVisible = payload;
+
+    if (!firstRectStartsOnPage && !sentenceStart) {
+      const hint = extractSentenceHint(element, firstVisibleRect);
+      if (hint) {
+        sentenceStart = {
+          ...payload,
+          kind: 'sentence',
+          text: hint,
+          utteranceHint: hint
+        };
+      }
+    }
+    if (firstRectStartsOnPage && !startsOnPage) {
+      payload.kind = 'pageStart';
+      startsOnPage = payload;
+    }
+
+    const fullyVisibleRect = visibleRects.find(rectFullyInViewport);
+    if (firstRectStartsOnPage && fullyVisibleRect && !firstCompleteBlock) {
+      payload.kind = 'full';
+      payload.top = fullyVisibleRect.top;
+      payload.bottom = fullyVisibleRect.bottom;
+      payload.left = fullyVisibleRect.left;
+      payload.right = fullyVisibleRect.right;
+      firstCompleteBlock = payload;
+    }
+  }
+
+  return sentenceStart || firstCompleteBlock || startsOnPage || firstVisible || null;
+})()
+"""
+
+private data class FreshTtsStart(
+    val locator: Locator?,
+    val kind: String,
+    val snippet: String?,
+    val utteranceHint: String?,
+)
 
 /**
  * Callback interface for events the TTS controller needs from the reader.
@@ -126,6 +334,7 @@ class ReaderTtsController(
     }
 
     fun startTts() {
+        Log.w(TRACE_TAG, "startTts invoked [$TRACE_BUILD], state=${_ttsState.value}, resume=${ttsResumeLocator.debugSummary()}")
         if (_ttsState.value != TtsPlaybackState.STOPPED) return
 
         delegate.onTtsSessionStarting()
@@ -133,15 +342,27 @@ class ReaderTtsController(
         ttsJob = scope.launch {
             val bookId = delegate.bookId ?: return@launch
 
-            val startLocator = ttsResumeLocator
-                ?: (delegate.navigator as? VisualNavigator)?.firstVisibleElementLocator()
-                ?: delegate.currentLocator
+            val freshStart = if (ttsResumeLocator != null) {
+                null
+            } else {
+                val pageLocator = delegate.currentLocator
+                    ?: (delegate.navigator as? VisualNavigator)?.firstVisibleElementLocator()
+                resolveFreshStart(pageLocator)
+            }
+
+            val startLocator = if (ttsResumeLocator != null) {
+                Log.w(TRACE_TAG, "startTts resuming from saved locator ${ttsResumeLocator.debugSummary()}")
+                ttsResumeLocator
+            } else {
+                freshStart?.locator
+            }
             val nav = ttsManager.start(startLocator, _ttsPreferences.value)
             if (nav == null) {
                 delegate.onTtsSessionEnding(restartManualSession = true)
                 return@launch
             }
             ttsNavigator = nav
+            alignNavigatorToFreshStart(nav, freshStart)
 
             val binder = ttsServiceBinder ?: TtsMediaService.bind(application)
             ttsServiceBinder = binder
@@ -198,6 +419,8 @@ class ReaderTtsController(
     }
 
     fun stopTts() {
+        Log.w(TRACE_TAG, "stopTts invoked [$TRACE_BUILD], clearing resume ${ttsResumeLocator.debugSummary()}")
+        ttsResumeLocator = null
         stopTts(restartManualSession = true)
     }
 
@@ -377,6 +600,105 @@ class ReaderTtsController(
             voice.languageTag.equals(language.locale.language, ignoreCase = true)
     }
 
+    private suspend fun resolveFreshStart(pageLocator: Locator?): FreshTtsStart {
+        val navigator = delegate.navigator
+        val domStart = if (navigator != null) {
+            findCurrentPageStartLocator(navigator, pageLocator)
+        } else {
+            null
+        }
+        val resolvedLocator = domStart?.locator
+            ?: delegate.publication?.resolveTtsStartLocator(pageLocator)
+            ?: pageLocator
+        val resolved = FreshTtsStart(
+            locator = resolvedLocator,
+            kind = domStart?.kind ?: "fallback",
+            snippet = domStart?.snippet,
+            utteranceHint = domStart?.utteranceHint
+        )
+        Log.w(
+            TRACE_TAG,
+            "resolveFreshStart [$TRACE_BUILD]: kind=${resolved.kind}, page=${pageLocator.debugSummary()}, dom=${domStart.debugSummary()}, resolved=${resolved.locator.debugSummary()}, hint=${resolved.utteranceHint ?: "<none>"}"
+        )
+        return resolved
+    }
+
+    private suspend fun findCurrentPageStartLocator(
+        navigator: EpubNavigatorFragment,
+        pageLocator: Locator?
+    ): FreshTtsStart? {
+        pageLocator ?: return null
+        val rawResult = navigator.evaluateJavascript(PAGE_START_CANDIDATE_SCRIPT) ?: return null
+        val candidate = parseJavascriptObject(rawResult) ?: return null
+        val cssSelector = candidate.optString("cssSelector").takeIf { it.isNotBlank() } ?: return null
+        val kind = candidate.optString("kind").takeIf { it.isNotBlank() } ?: "unknown"
+        val snippet = candidate.optString("text").takeIf { it.isNotBlank() }
+        val utteranceHint = candidate.optString("utteranceHint").takeIf { it.isNotBlank() }
+
+        val locator = pageLocator.copy(
+            locations = pageLocator.locations.copy(
+                otherLocations = pageLocator.locations.otherLocations + ("cssSelector" to cssSelector)
+            )
+        )
+        Log.w(
+            TRACE_TAG,
+            "findCurrentPageStartLocator [$TRACE_BUILD]: kind=$kind, cssSelector=$cssSelector, snippet=${snippet ?: "<none>"}, hint=${utteranceHint ?: "<none>"}"
+        )
+        return FreshTtsStart(
+            locator = locator,
+            kind = kind,
+            snippet = snippet,
+            utteranceHint = utteranceHint
+        )
+    }
+
+    private suspend fun alignNavigatorToFreshStart(
+        navigator: AndroidTtsNavigator,
+        freshStart: FreshTtsStart?
+    ) {
+        val targetHint = freshStart?.utteranceHint?.normalizedUtteranceHint() ?: return
+        repeat(8) { step ->
+            val currentUtterance = navigator.location.value.utterance
+            val normalizedCurrent = currentUtterance.normalizedUtteranceHint()
+            Log.w(
+                TRACE_TAG,
+                "alignNavigatorToFreshStart [$TRACE_BUILD]: step=$step, kind=${freshStart.kind}, current=${currentUtterance.take(120)}, target=${freshStart.utteranceHint.take(120)}"
+            )
+            if (normalizedCurrent.matchesUtteranceHint(targetHint)) {
+                return
+            }
+            if (!navigator.hasNextUtterance()) {
+                Log.w(TRACE_TAG, "alignNavigatorToFreshStart [$TRACE_BUILD]: no next utterance while seeking target")
+                return
+            }
+            val previousUtterance = currentUtterance
+            navigator.skipToNextUtterance()
+            waitForUtteranceAdvance(navigator, previousUtterance)
+        }
+        Log.w(
+            TRACE_TAG,
+            "alignNavigatorToFreshStart [$TRACE_BUILD]: exhausted alignment attempts for target=${freshStart.utteranceHint.take(120)}"
+        )
+    }
+
+    private suspend fun waitForUtteranceAdvance(
+        navigator: AndroidTtsNavigator,
+        previousUtterance: String
+    ) {
+        repeat(10) {
+            delay(30)
+            if (navigator.location.value.utterance != previousUtterance) {
+                return
+            }
+        }
+    }
+
+    private fun parseJavascriptObject(rawResult: String): JSONObject? {
+        val trimmed = rawResult.trim()
+        if (trimmed.isEmpty() || trimmed == "null") return null
+        return runCatching { JSONObject(trimmed) }.getOrNull()
+    }
+
     private fun saveTtsPosition(bookId: String, locator: Locator) {
         val now = System.currentTimeMillis()
         if (now - lastTtsSaveMs < 5_000) return
@@ -431,5 +753,31 @@ class ReaderTtsController(
             .lastOrNull { it.second <= currentTotal + 0.001 }
             ?.first
             ?: candidates.firstOrNull()
+    }
+
+    private fun Locator?.debugSummary(): String {
+        if (this == null) return "<null>"
+        val cssSelector = locations.otherLocations["cssSelector"]
+        return "href=${href}, progression=${locations.progression}, total=${locations.totalProgression}, css=$cssSelector, highlight=${text.highlight}"
+    }
+
+    private fun FreshTtsStart?.debugSummary(): String {
+        if (this == null) return "<null>"
+        return "kind=$kind, locator=${locator.debugSummary()}, snippet=${snippet ?: "<none>"}, hint=${utteranceHint ?: "<none>"}"
+    }
+
+    private fun String.normalizedUtteranceHint(): String =
+        lowercase(Locale.getDefault())
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun String.matchesUtteranceHint(targetHint: String): Boolean {
+        if (isBlank() || targetHint.isBlank()) return false
+        val minPrefixLength = minOf(24, length, targetHint.length)
+        if (minPrefixLength <= 0) return false
+        val currentPrefix = take(minPrefixLength)
+        val targetPrefix = targetHint.take(minPrefixLength)
+        return startsWith(targetPrefix) || targetHint.startsWith(currentPrefix)
     }
 }
