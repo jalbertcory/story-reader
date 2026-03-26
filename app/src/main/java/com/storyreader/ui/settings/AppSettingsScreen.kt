@@ -494,12 +494,15 @@ fun AppSettingsScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            uiState.savedMessage?.let { message ->
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
             CollapsibleSection(title = "Sync Providers", subtitle = uiState.syncSummary) {
-            Text(
-                text = uiState.syncSummary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             SyncStatusLine(syncStatus)
             Button(
                 onClick = viewModel::syncNow,
@@ -704,14 +707,6 @@ fun AppSettingsScreen(
             }
 
             } // end CollapsibleSection "Book Sources"
-
-            uiState.savedMessage?.let { message ->
-                Text(
-                    message,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
         }
     }
 }
