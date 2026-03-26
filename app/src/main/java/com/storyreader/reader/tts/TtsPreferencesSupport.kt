@@ -1,5 +1,6 @@
 package com.storyreader.reader.tts
 
+import android.util.Log
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import androidx.annotation.VisibleForTesting
@@ -22,6 +23,8 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Language
 import org.readium.r2.shared.util.Try
+
+private const val TAG = "TtsPreferencesSupport"
 
 data class TtsEngineOption(
     val packageName: String,
@@ -67,7 +70,8 @@ class TtsCatalog(private val context: Context) {
 
                 val voices = try {
                     engine.voices.orEmpty()
-                } catch (_: Throwable) {
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed to get TTS voices from engine", e)
                     emptySet()
                 }
                     .map { voice ->
@@ -163,7 +167,8 @@ class StoryReaderAndroidTtsEngineProvider(
 
         val voices = try {
             textToSpeech.voices.orEmpty()
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to get TTS voices from custom engine", e)
             emptySet()
         }.map { it.toTtsEngineVoice() }
             .toSet()
@@ -177,7 +182,8 @@ class StoryReaderAndroidTtsEngineProvider(
                 voices = voices,
                 initialPreferences = initialPreferences
             )
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to create AndroidTtsEngine instance", e)
             textToSpeech.shutdown()
             null
         } ?: return Try.failure(DebugError("Failed to create Android Tts engine."))

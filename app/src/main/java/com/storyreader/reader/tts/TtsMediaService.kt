@@ -179,7 +179,8 @@ class TtsMediaService : MediaLibraryService() {
                 try {
                     val items = buildChildrenFor(parentId)
                     future.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to build children for '$parentId'", e)
                     future.set(LibraryResult.ofItemList(ImmutableList.of(), params))
                 }
             }
@@ -373,7 +374,7 @@ class TtsMediaService : MediaLibraryService() {
             try {
                 val art = downsampleArtwork(java.io.File(path).readBytes(), BROWSE_ARTWORK_SIZE)
                 metaBuilder.setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-            } catch (_: Exception) { /* cover file missing */ }
+            } catch (e: Exception) { Log.w(TAG, "Failed to load cover art for browse item", e) }
         }
         return MediaItem.Builder()
             .setMediaId(book.bookId)
@@ -438,7 +439,7 @@ class TtsMediaService : MediaLibraryService() {
         standaloneBookId = bookId
         val bookEntity = app.database.bookDao().getByIdOnce(bookId)
         standaloneCoverArt = bookEntity?.coverUri?.let { path ->
-            try { downsampleArtwork(java.io.File(path).readBytes()) } catch (_: Exception) { null }
+            try { downsampleArtwork(java.io.File(path).readBytes()) } catch (e: Exception) { Log.w(TAG, "Failed to load standalone cover art", e); null }
         }
 
         // Create session with a wrapper that allows dynamic metadata updates
@@ -628,6 +629,7 @@ class TtsMediaService : MediaLibraryService() {
         val serialized = prefStore.getString("tts_prefs_json", null)
             ?: return AndroidTtsPreferences(speed = 1.5)
         return runCatching { AndroidTtsPreferencesSerializer().deserialize(serialized) }
+            .onFailure { e -> Log.w(TAG, "Failed to deserialize TTS preferences", e) }
             .getOrDefault(AndroidTtsPreferences(speed = 1.5))
     }
 

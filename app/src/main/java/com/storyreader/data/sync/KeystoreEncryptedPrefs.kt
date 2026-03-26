@@ -1,6 +1,7 @@
 package com.storyreader.data.sync
 
 import android.content.SharedPreferences
+import android.util.Log
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -58,7 +59,8 @@ internal class KeystoreEncryptedPrefs(
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
         String(cipher.doFinal(ciphertext), Charsets.UTF_8)
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        Log.w(TAG, "Failed to decrypt preference value", e)
         null
     }
 
@@ -98,6 +100,7 @@ internal class KeystoreEncryptedPrefs(
     }
 
     companion object {
+        private const val TAG = "KeystoreEncryptedPrefs"
         private const val KEY_ALIAS = "sync_credentials_key"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_LENGTH = 12

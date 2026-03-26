@@ -29,6 +29,14 @@ Fix all errors reported. Warnings that are flagged as errors in the lint config 
 - Dependencies live in `gradle/libs.versions.toml`
 - Keep versions reasonably current; the pre-push hook will flag obsolete ones via lint
 
+### Error handling
+- **Repositories/data layer**: Return `Result<T>` using `runCatching` or explicit `Result.success`/`Result.failure`
+- **ViewModel layer**: Handle repository results with `.fold()` or `.onSuccess { }.onFailure { }`. Never bare `try-catch` around repository calls
+- **Silent failures**: Always log with `Log.w(TAG, message, exception)` when catching and discarding exceptions. Never use `catch (_: Exception)` without logging
+- **`getOrNull()`/`getOrDefault()`**: Chain `.onFailure { Log.w(...) }` before extracting the value so failures are visible in logcat
+- **Fire-and-forget**: Use `runCatching` with logging for operations where failure is acceptable (position saves, cover loading)
+- Helper extensions in `com.storyreader.util.ResultExtensions` — `getOrDefaultLogging()`, `getOrNullLogging()`
+
 ## Running tests
 
 ```bash

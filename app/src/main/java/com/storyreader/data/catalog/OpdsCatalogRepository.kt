@@ -67,7 +67,8 @@ class OpdsCatalogRepository(
             } ?: throw IllegalStateException("OPDS returned an empty publication")
         }
         destination
-    }.onFailure {
+    }.onFailure { e ->
+        Log.w(TAG, "Failed to download publication '${entry.title}'", e)
         val destination = File(destinationDir, buildFileName(entry))
         destination.delete()
     }

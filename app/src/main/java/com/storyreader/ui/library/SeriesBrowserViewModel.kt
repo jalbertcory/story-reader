@@ -1,6 +1,7 @@
 package com.storyreader.ui.library
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+private const val TAG = "SeriesBrowserVM"
 
 data class SeriesBrowserUiState(
     val allSeries: List<SeriesSummary> = emptyList(),
@@ -97,9 +100,11 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
     private suspend fun fetchAllSeriesBooks(series: List<SeriesSummary>) {
         val result = mutableMapOf<String, List<ServerBook>>()
         for (s in series) {
-            apiClient.fetchSeriesBooks(s.name).getOrNull()?.let { books ->
-                result[s.name] = books
-            }
+            apiClient.fetchSeriesBooks(s.name)
+                .onFailure { e -> Log.w(TAG, "Failed to fetch books for series '${s.name}'", e) }
+                .getOrNull()?.let { books ->
+                    result[s.name] = books
+                }
         }
         allSeriesBooks = result
         allBooksFetched = true
@@ -133,7 +138,9 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
             )
             // Use cached data if available
             val books = allSeriesBooks[seriesName]
-                ?: apiClient.fetchSeriesBooks(seriesName).getOrNull()
+                ?: apiClient.fetchSeriesBooks(seriesName)
+                    .onFailure { e -> Log.w(TAG, "Failed to load books for series '$seriesName'", e) }
+                    .getOrNull()
                 ?: emptyList()
 
             // Cache for future use
