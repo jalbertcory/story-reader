@@ -43,9 +43,6 @@ import org.readium.navigator.media.tts.android.AndroidTtsPreferencesSerializer
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.publication.indexOfFirstWithHref
-import org.readium.r2.shared.publication.services.content.content
-import kotlin.math.abs
 
 /**
  * MediaLibraryService hosting the TTS playback session. This allows Android to show
@@ -425,8 +422,7 @@ class TtsMediaService : MediaLibraryService() {
         val prefs = loadTtsPreferences()
         val enginePkg = loadTtsEngine()
 
-        // Enhance the locator so TTS can position within the chapter (needs cssSelector)
-        val ttsLocator = locator?.let { enhanceLocatorForTts(publication, it) }
+        val ttsLocator = publication.resolveTtsStartLocator(locator)
 
         // Initialize and start TTS
         val manager = TtsManager(application as Application)
@@ -565,45 +561,6 @@ class TtsMediaService : MediaLibraryService() {
         val metadata = metaBuilder.build()
 
         player.updateMetadata(metadata)
-    }
-
-    /**
-     * If the locator lacks a cssSelector (e.g. saved from the visual epub reader), Readium's
-     * HtmlResourceContentIterator cannot position within the chapter and falls back to position 0.
-     * Work around this by iterating the publication content to find the element whose
-     * totalProgression is closest to the saved value — its locator will carry a cssSelector.
-     */
-    private suspend fun enhanceLocatorForTts(
-        publication: Publication,
-        locator: Locator
-    ): Locator {
-        if (locator.locations.otherLocations.containsKey("cssSelector")) return locator
-
-        val targetProgression = locator.locations.totalProgression ?: return locator
-        val readingOrderIndex =
-            publication.readingOrder.indexOfFirstWithHref(locator.href) ?: return locator
-        val link = publication.readingOrder[readingOrderIndex]
-        val chapterLocator = publication.locatorFromLink(link) ?: return locator
-
-        val content = publication.content(chapterLocator) ?: return locator
-        val iterator = content.iterator()
-
-        var bestLocator: Locator? = null
-        var bestDiff = Double.MAX_VALUE
-
-        while (iterator.hasNext()) {
-            val element = iterator.next()
-            if (element.locator.href != locator.href) break
-            val elementProgression = element.locator.locations.totalProgression ?: continue
-            val diff = abs(elementProgression - targetProgression)
-            if (diff < bestDiff) {
-                bestDiff = diff
-                bestLocator = element.locator
-            }
-            if (elementProgression > targetProgression) break
-        }
-
-        return bestLocator ?: locator
     }
 
     /**
