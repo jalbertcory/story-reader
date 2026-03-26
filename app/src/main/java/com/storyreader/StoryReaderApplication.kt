@@ -103,10 +103,11 @@ class StoryReaderApplication : Application() {
 
     val syncManager: SyncManager by lazy {
         SyncManager(
-            listOf(
+            providers = listOf(
                 NextcloudSyncProvider(syncSettingsStore, credentialsManager, webDavSyncRepository),
                 GoogleDriveSyncProvider(syncSettingsStore, googleDriveCredentialsManager, googleDriveSyncRepository)
-            )
+            ),
+            syncSettingsStore = syncSettingsStore
         )
     }
 

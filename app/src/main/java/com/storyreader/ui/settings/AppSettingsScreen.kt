@@ -2,10 +2,15 @@ package com.storyreader.ui.settings
 
 import android.app.Application
 import android.content.Intent
+import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -37,8 +44,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
@@ -52,6 +62,7 @@ import com.storyreader.StoryReaderApplication
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.sync.GoogleDriveAuthorizationOutcome
 import com.storyreader.data.sync.SyncScheduler
+import com.storyreader.data.sync.SyncStatus
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -102,6 +113,8 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _events = MutableSharedFlow<AppSettingsEvent>()
     val events: SharedFlow<AppSettingsEvent> = _events.asSharedFlow()
+
+    val syncStatus: StateFlow<SyncStatus> = app.syncManager.status
 
     private val _uiState = MutableStateFlow(
         buildUiState(
@@ -443,6 +456,7 @@ fun AppSettingsScreen(
     viewModel: AppSettingsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
     val authorizationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -480,18 +494,28 @@ fun AppSettingsScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Text("Sync Providers", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = uiState.syncSummary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            uiState.savedMessage?.let { message ->
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            CollapsibleSection(title = "Sync Providers", subtitle = uiState.syncSummary) {
+            SyncStatusLine(syncStatus)
             Button(
                 onClick = viewModel::syncNow,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = uiState.canSyncNow && !uiState.isSyncingNow
             ) {
-                Text(if (uiState.isSyncingNow) "Syncing..." else "Sync Now")
+                Text(
+                    when {
+                        uiState.isSyncingNow -> "Syncing..."
+                        syncStatus is SyncStatus.Syncing -> "Syncing ${(syncStatus as SyncStatus.Syncing).providerName}..."
+                        else -> "Sync Now"
+                    }
+                )
             }
 
             SyncProviderCard(
@@ -605,9 +629,11 @@ fun AppSettingsScreen(
                 }
             }
 
+            } // end CollapsibleSection "Sync Providers"
+
             HorizontalDivider()
 
-            Text("Book Sources", style = MaterialTheme.typography.titleMedium)
+            CollapsibleSection(title = "Book Sources", subtitle = uiState.opdsStatus) {
 
             SourceSettingsCard(title = "OPDS Catalog") {
                 Text(
@@ -680,13 +706,7 @@ fun AppSettingsScreen(
                 }
             }
 
-            uiState.savedMessage?.let { message ->
-                Text(
-                    message,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
+            } // end CollapsibleSection "Book Sources"
         }
     }
 }
@@ -731,6 +751,76 @@ private fun SourceSettingsCard(
     ) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         content()
+    }
+}
+
+@Composable
+private fun CollapsibleSection(
+    title: String,
+    subtitle: String? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (!expanded && subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Icon(
+            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = if (expanded) "Collapse" else "Expand",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically(),
+        exit = shrinkVertically()
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusLine(syncStatus: SyncStatus) {
+    val text = when (syncStatus) {
+        is SyncStatus.Idle -> null
+        is SyncStatus.Syncing -> "Syncing ${syncStatus.providerName}..."
+        is SyncStatus.Completed -> "Last synced ${
+            DateUtils.getRelativeTimeSpanString(
+                syncStatus.timestampMs,
+                System.currentTimeMillis(),
+                DateUtils.MINUTE_IN_MILLIS
+            )
+        }"
+        is SyncStatus.Failed -> "Last sync failed: ${syncStatus.message}"
+    }
+    if (text != null) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = when (syncStatus) {
+                is SyncStatus.Failed -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
     }
 }
 
