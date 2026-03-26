@@ -6,6 +6,7 @@ import android.net.Uri
 import com.storyreader.data.db.dao.BookDao
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.reader.epub.EpubRepository
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.cover
@@ -76,7 +77,7 @@ class BookRepositoryImpl(
             try {
                 val bytes = publication.get(link)?.read()?.getOrNull() ?: continue
                 total += countWordsInHtml(String(bytes, Charsets.UTF_8))
-            } catch (_: Exception) { /* skip resource on error */ }
+            } catch (e: Exception) { Log.w(TAG, "Failed to count words in ${link.href}", e) }
         }
         return total
     }
@@ -100,8 +101,13 @@ class BookRepositoryImpl(
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             }
             file.absolutePath
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save cover image", e)
             null
         }
+    }
+
+    companion object {
+        private const val TAG = "BookRepository"
     }
 }

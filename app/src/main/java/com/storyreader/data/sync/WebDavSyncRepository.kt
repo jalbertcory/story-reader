@@ -16,7 +16,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import android.util.Log
 import java.io.File
+
+private const val TAG = "WebDavSyncRepo"
 
 class WebDavSyncRepository(
     private val credentialsManager: SyncCredentialsManager,
@@ -144,7 +147,8 @@ class WebDavSyncRepository(
             // Download remote data (may not exist yet)
             val remoteJson = try {
                 downloadJson()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w(TAG, "No remote sync data found (may not exist yet)", e)
                 null
             }
 

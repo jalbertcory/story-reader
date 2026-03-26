@@ -143,7 +143,9 @@ class StoryManagerRepository(
 
             if (serverBook.series == null || serverBook.series !in localSeriesNames) continue
             Log.d(TAG, "checkForNewBooks: new book '${serverBook.title}' in series '${serverBook.series}'")
-            importSingleBook(serverBook).getOrNull()
+            importSingleBook(serverBook)
+                .onFailure { e -> Log.w(TAG, "Failed to import '${serverBook.title}'", e) }
+                .getOrNull() ?: continue
             imported++
         }
 
@@ -184,7 +186,8 @@ class StoryManagerRepository(
 
     private fun parseServerTimestamp(timestamp: String): Long = try {
         Instant.parse(timestamp).toEpochMilli()
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        Log.w(TAG, "Failed to parse server timestamp '$timestamp'", e)
         System.currentTimeMillis()
     }
 
@@ -197,7 +200,8 @@ class StoryManagerRepository(
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             }
             file.absolutePath
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save cover image", e)
             null
         }
     }

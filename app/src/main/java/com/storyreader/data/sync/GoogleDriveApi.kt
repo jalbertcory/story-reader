@@ -1,5 +1,6 @@
 package com.storyreader.data.sync
 
+import android.util.Log
 import java.io.File
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -57,7 +58,8 @@ class GoogleDriveApi(
             } ?: throw IllegalStateException("Google Drive returned an empty file")
             Unit
         }
-    }.onFailure {
+    }.onFailure { e ->
+        Log.w(TAG, "Google Drive download failed for file $fileId", e)
         destination.delete()
     }
 
@@ -222,6 +224,7 @@ class GoogleDriveApi(
     }
 
     companion object {
+        private const val TAG = "GoogleDriveApi"
         private const val DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
         private const val DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3"
         private const val FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
