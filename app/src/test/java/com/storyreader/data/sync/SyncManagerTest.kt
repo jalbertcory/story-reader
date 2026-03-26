@@ -1,11 +1,25 @@
 package com.storyreader.data.sync
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class SyncManagerTest {
+
+    private val syncSettingsStore: SyncSettingsStore by lazy {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        SyncSettingsStore.create(context)
+    }
+
+    private fun makeSyncManager(providers: List<SyncProvider>): SyncManager {
+        return SyncManager(providers, syncSettingsStore)
+    }
 
     private fun makeProvider(
         id: String,
@@ -22,30 +36,30 @@ class SyncManagerTest {
 
     @Test
     fun `hasEnabledConfiguredProviders returns false when no providers`() {
-        assertFalse(SyncManager(emptyList()).hasEnabledConfiguredProviders())
+        assertFalse(makeSyncManager(emptyList()).hasEnabledConfiguredProviders())
     }
 
     @Test
     fun `hasEnabledConfiguredProviders returns false when provider is disabled`() {
-        val manager = SyncManager(listOf(makeProvider("p1", enabled = false, configured = true)))
+        val manager = makeSyncManager(listOf(makeProvider("p1", enabled = false, configured = true)))
         assertFalse(manager.hasEnabledConfiguredProviders())
     }
 
     @Test
     fun `hasEnabledConfiguredProviders returns false when provider is not configured`() {
-        val manager = SyncManager(listOf(makeProvider("p1", enabled = true, configured = false)))
+        val manager = makeSyncManager(listOf(makeProvider("p1", enabled = true, configured = false)))
         assertFalse(manager.hasEnabledConfiguredProviders())
     }
 
     @Test
     fun `hasEnabledConfiguredProviders returns true when one provider is enabled and configured`() {
-        val manager = SyncManager(listOf(makeProvider("p1", enabled = true, configured = true)))
+        val manager = makeSyncManager(listOf(makeProvider("p1", enabled = true, configured = true)))
         assertTrue(manager.hasEnabledConfiguredProviders())
     }
 
     @Test
     fun `hasEnabledConfiguredProviders returns true even if other providers are disabled`() {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("p1", enabled = false, configured = true),
             makeProvider("p2", enabled = true, configured = true)
         ))
@@ -54,12 +68,12 @@ class SyncManagerTest {
 
     @Test
     fun `syncEnabledProviders succeeds with no providers`() = runTest {
-        assertTrue(SyncManager(emptyList()).syncEnabledProviders().isSuccess)
+        assertTrue(makeSyncManager(emptyList()).syncEnabledProviders().isSuccess)
     }
 
     @Test
     fun `syncEnabledProviders succeeds when all providers succeed`() = runTest {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("p1", enabled = true, configured = true),
             makeProvider("p2", enabled = true, configured = true)
         ))
@@ -68,7 +82,7 @@ class SyncManagerTest {
 
     @Test
     fun `syncEnabledProviders succeeds with no enabled and configured providers`() = runTest {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("p1", enabled = false, configured = true),
             makeProvider("p2", enabled = true, configured = false)
         ))
@@ -77,7 +91,7 @@ class SyncManagerTest {
 
     @Test
     fun `syncEnabledProviders fails when a provider fails`() = runTest {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("p1", enabled = true, configured = true,
                 syncResult = Result.failure(RuntimeException("network error")))
         ))
@@ -88,7 +102,7 @@ class SyncManagerTest {
 
     @Test
     fun `syncEnabledProviders includes provider display name in failure message`() = runTest {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("nextcloud", enabled = true, configured = true,
                 syncResult = Result.failure(RuntimeException("timeout")))
         ))
@@ -98,7 +112,7 @@ class SyncManagerTest {
 
     @Test
     fun `syncEnabledProviders aggregates multiple failures`() = runTest {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("p1", enabled = true, configured = true,
                 syncResult = Result.failure(RuntimeException("err1"))),
             makeProvider("p2", enabled = true, configured = true,
@@ -124,7 +138,7 @@ class SyncManagerTest {
                 return Result.success(Unit)
             }
         }
-        SyncManager(listOf(provider)).syncEnabledProviders()
+        makeSyncManager(listOf(provider)).syncEnabledProviders()
         assertFalse("Disabled provider should not be synced", syncCalled)
     }
 
@@ -141,7 +155,7 @@ class SyncManagerTest {
                 return Result.success(Unit)
             }
         }
-        SyncManager(listOf(provider)).syncEnabledProviders()
+        makeSyncManager(listOf(provider)).syncEnabledProviders()
         assertFalse("Unconfigured provider should not be synced", syncCalled)
     }
 
@@ -160,13 +174,13 @@ class SyncManagerTest {
                 return Result.success(Unit)
             }
         }
-        SyncManager(listOf(p1, p2)).syncEnabledProviders()
+        makeSyncManager(listOf(p1, p2)).syncEnabledProviders()
         assertTrue("p2 should run even though p1 failed", p2Called)
     }
 
     @Test
     fun `syncEnabledProviders result is success when only disabled provider fails`() = runTest {
-        val manager = SyncManager(listOf(
+        val manager = makeSyncManager(listOf(
             makeProvider("disabled-fail", enabled = false, configured = true,
                 syncResult = Result.failure(RuntimeException("would fail")))
         ))
