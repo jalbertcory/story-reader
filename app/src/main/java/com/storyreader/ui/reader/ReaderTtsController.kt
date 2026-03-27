@@ -37,7 +37,6 @@ import java.util.Locale
 
 private const val TAG = "ReaderTtsController"
 private const val TRACE_TAG = "TTS_TRACE"
-private const val TRACE_BUILD = "codex/tts-page-start 2026-03-26-c"
 private const val KEY_TTS_PREFS = "tts_prefs_json"
 private const val KEY_TTS_ENGINE = "tts_engine"
 private const val DEFAULT_TTS_SPEED = 1.5
@@ -334,7 +333,7 @@ class ReaderTtsController(
     }
 
     fun startTts() {
-        Log.w(TRACE_TAG, "startTts invoked [$TRACE_BUILD], state=${_ttsState.value}, resume=${ttsResumeLocator.debugSummary()}")
+        Log.d(TRACE_TAG, "startTts: state=${_ttsState.value}, resume=${ttsResumeLocator.debugSummary()}")
         if (_ttsState.value != TtsPlaybackState.STOPPED) return
 
         delegate.onTtsSessionStarting()
@@ -351,7 +350,7 @@ class ReaderTtsController(
             }
 
             val startLocator = if (ttsResumeLocator != null) {
-                Log.w(TRACE_TAG, "startTts resuming from saved locator ${ttsResumeLocator.debugSummary()}")
+                Log.d(TRACE_TAG, "startTts: resuming from saved locator ${ttsResumeLocator.debugSummary()}")
                 ttsResumeLocator
             } else {
                 freshStart?.locator
@@ -419,7 +418,7 @@ class ReaderTtsController(
     }
 
     fun stopTts() {
-        Log.w(TRACE_TAG, "stopTts invoked [$TRACE_BUILD], clearing resume ${ttsResumeLocator.debugSummary()}")
+        Log.d(TRACE_TAG, "stopTts: clearing resume ${ttsResumeLocator.debugSummary()}")
         ttsResumeLocator = null
         stopTts(restartManualSession = true)
     }
@@ -616,9 +615,9 @@ class ReaderTtsController(
             snippet = domStart?.snippet,
             utteranceHint = domStart?.utteranceHint
         )
-        Log.w(
+        Log.d(
             TRACE_TAG,
-            "resolveFreshStart [$TRACE_BUILD]: kind=${resolved.kind}, page=${pageLocator.debugSummary()}, dom=${domStart.debugSummary()}, resolved=${resolved.locator.debugSummary()}, hint=${resolved.utteranceHint ?: "<none>"}"
+            "resolveFreshStart: kind=${resolved.kind}, page=${pageLocator.debugSummary()}, dom=${domStart.debugSummary()}, resolved=${resolved.locator.debugSummary()}"
         )
         return resolved
     }
@@ -640,9 +639,9 @@ class ReaderTtsController(
                 otherLocations = pageLocator.locations.otherLocations + ("cssSelector" to cssSelector)
             )
         )
-        Log.w(
+        Log.d(
             TRACE_TAG,
-            "findCurrentPageStartLocator [$TRACE_BUILD]: kind=$kind, cssSelector=$cssSelector, snippet=${snippet ?: "<none>"}, hint=${utteranceHint ?: "<none>"}"
+            "findCurrentPageStartLocator: kind=$kind, cssSelector=$cssSelector"
         )
         return FreshTtsStart(
             locator = locator,
@@ -660,24 +659,24 @@ class ReaderTtsController(
         repeat(8) { step ->
             val currentUtterance = navigator.location.value.utterance
             val normalizedCurrent = currentUtterance.normalizedUtteranceHint()
-            Log.w(
+            Log.d(
                 TRACE_TAG,
-                "alignNavigatorToFreshStart [$TRACE_BUILD]: step=$step, kind=${freshStart.kind}, current=${currentUtterance.take(120)}, target=${freshStart.utteranceHint.take(120)}"
+                "alignNavigatorToFreshStart: step=$step, kind=${freshStart.kind}"
             )
             if (normalizedCurrent.matchesUtteranceHint(targetHint)) {
                 return
             }
             if (!navigator.hasNextUtterance()) {
-                Log.w(TRACE_TAG, "alignNavigatorToFreshStart [$TRACE_BUILD]: no next utterance while seeking target")
+                Log.d(TRACE_TAG, "alignNavigatorToFreshStart: no next utterance while seeking target")
                 return
             }
             val previousUtterance = currentUtterance
             navigator.skipToNextUtterance()
             waitForUtteranceAdvance(navigator, previousUtterance)
         }
-        Log.w(
+        Log.d(
             TRACE_TAG,
-            "alignNavigatorToFreshStart [$TRACE_BUILD]: exhausted alignment attempts for target=${freshStart.utteranceHint.take(120)}"
+            "alignNavigatorToFreshStart: exhausted alignment attempts"
         )
     }
 
@@ -758,7 +757,7 @@ class ReaderTtsController(
     private fun Locator?.debugSummary(): String {
         if (this == null) return "<null>"
         val cssSelector = locations.otherLocations["cssSelector"]
-        return "href=${href}, progression=${locations.progression}, total=${locations.totalProgression}, css=$cssSelector, highlight=${text.highlight}"
+        return "href=${href}, progression=${locations.progression}, total=${locations.totalProgression}, css=$cssSelector"
     }
 
     private fun FreshTtsStart?.debugSummary(): String {
@@ -767,7 +766,7 @@ class ReaderTtsController(
     }
 
     private fun String.normalizedUtteranceHint(): String =
-        lowercase(Locale.getDefault())
+        lowercase(Locale.ROOT)
             .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()

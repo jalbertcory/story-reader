@@ -29,33 +29,33 @@ import com.storyreader.data.sync.WebDavSyncRepository
 import com.storyreader.reader.epub.EpubRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 
-class StoryReaderApplication : Application() {
+open class StoryReaderApplication : Application() {
 
-    val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
+    open val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
 
-    val epubRepository: EpubRepository by lazy { EpubRepository(this) }
+    open val epubRepository: EpubRepository by lazy { EpubRepository(this) }
 
-    val bookRepository: BookRepository by lazy {
+    open val bookRepository: BookRepository by lazy {
         BookRepositoryImpl(this, database.bookDao(), epubRepository)
     }
 
-    val readingRepository: ReadingRepository by lazy {
+    open val readingRepository: ReadingRepository by lazy {
         ReadingRepositoryImpl(database.readingPositionDao(), database.readingSessionDao())
     }
 
-    val credentialsManager: SyncCredentialsManager by lazy {
+    open val credentialsManager: SyncCredentialsManager by lazy {
         SyncCredentialsManager.create(this)
     }
 
-    val googleDriveCredentialsManager: GoogleDriveCredentialsManager by lazy {
+    open val googleDriveCredentialsManager: GoogleDriveCredentialsManager by lazy {
         GoogleDriveCredentialsManager.create(this)
     }
 
-    val syncSettingsStore: SyncSettingsStore by lazy {
+    open val syncSettingsStore: SyncSettingsStore by lazy {
         SyncSettingsStore.create(this)
     }
 
-    val opdsCredentialsManager: OpdsCredentialsManager by lazy {
+    open val opdsCredentialsManager: OpdsCredentialsManager by lazy {
         OpdsCredentialsManager.create(this)
     }
 
@@ -101,7 +101,7 @@ class StoryReaderApplication : Application() {
         )
     }
 
-    val syncManager: SyncManager by lazy {
+    open val syncManager: SyncManager by lazy {
         SyncManager(
             providers = listOf(
                 NextcloudSyncProvider(syncSettingsStore, credentialsManager, webDavSyncRepository),

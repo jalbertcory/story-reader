@@ -59,8 +59,6 @@ data class ReaderUiState(
 )
 
 private const val TAG = "ReaderViewModel"
-private const val TRACE_TAG = "TTS_TRACE"
-private const val TRACE_BUILD = "codex/tts-page-start 2026-03-26-c"
 private const val PREFS_NAME = "reader_preferences"
 private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_THEME = "theme"
@@ -450,15 +448,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     // --- TTS delegation ---
 
-    fun startTts() {
-        Log.w(TRACE_TAG, "ReaderViewModel.startTts [$TRACE_BUILD]")
-        ttsController.startTts()
-    }
+    fun startTts() = ttsController.startTts()
     fun ttsPlayPause() = ttsController.ttsPlayPause()
-    fun stopTts() {
-        Log.w(TRACE_TAG, "ReaderViewModel.stopTts [$TRACE_BUILD]")
-        ttsController.stopTts()
-    }
+    fun stopTts() = ttsController.stopTts()
     fun ttsSkipPrevious() = ttsController.ttsSkipPrevious()
     fun ttsSkipNext() = ttsController.ttsSkipNext()
     fun updateTtsSpeed(value: Float) = ttsController.updateTtsSpeed(value)
