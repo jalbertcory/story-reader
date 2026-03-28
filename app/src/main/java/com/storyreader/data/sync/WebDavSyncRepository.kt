@@ -168,10 +168,12 @@ class WebDavSyncRepository(
     private fun uploadJson(json: JSONObject) {
         val client = createClient()
         ensureSyncFolderExists(client)
-        val url = buildSyncUrl().toHttpUrl()
         val body = json.toString().toRequestBody("application/json".toMediaType())
-        val davCollection = DavCollection(client, url)
-        davCollection.put(body, "application/json") { response ->
+        val request = Request.Builder()
+            .url(buildSyncUrl())
+            .put(body)
+            .build()
+        client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw Exception("Upload failed: ${response.code}")
             }
