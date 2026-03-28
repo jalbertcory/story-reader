@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -153,6 +155,7 @@ private fun statusBarStyleFor(preferences: EpubPreferences?): StatusBarStyle = w
 fun ReaderScreen(
     bookId: String,
     onBack: () -> Unit,
+    onNavigateToBook: (String) -> Unit = {},
     viewModel: ReaderViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -163,6 +166,7 @@ fun ReaderScreen(
     val currentChapter by viewModel.currentChapter.collectAsState()
     val showBars by viewModel.showBars.collectAsState()
     val brightnessLevel by viewModel.brightnessLevel.collectAsState()
+    val nextBookPrompt by viewModel.showNextBookPrompt.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
     var showTtsSettings by remember { mutableStateOf(false) }
@@ -461,6 +465,30 @@ fun ReaderScreen(
                     showToc = false
                 },
                 onDismiss = { showToc = false }
+            )
+        }
+
+        nextBookPrompt?.let { nextBook ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissNextBookPrompt() },
+                title = { Text("Continue Series") },
+                text = {
+                    Text("Continue to the next book in ${nextBook.seriesName}?\n\n${nextBook.title}")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.dismissNextBookPrompt()
+                        viewModel.finalizeSession()
+                        onNavigateToBook(nextBook.bookId)
+                    }) {
+                        Text("Continue")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissNextBookPrompt() }) {
+                        Text("Stay Here")
+                    }
+                }
             )
         }
     }
