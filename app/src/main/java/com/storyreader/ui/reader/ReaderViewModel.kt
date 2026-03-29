@@ -50,6 +50,12 @@ data class TtsSettingsUiState(
     val isLoadingVoices: Boolean = false
 )
 
+data class NextBookInfo(
+    val bookId: String,
+    val title: String,
+    val seriesName: String
+)
+
 data class ReaderUiState(
     val publication: Publication? = null,
     val book: BookEntity? = null,
@@ -59,6 +65,7 @@ data class ReaderUiState(
 )
 
 private const val TAG = "ReaderViewModel"
+private const val END_OF_BOOK_THRESHOLD = 0.99
 private const val PREFS_NAME = "reader_preferences"
 private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_THEME = "theme"
@@ -94,6 +101,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _showBars = MutableStateFlow(true)
     val showBars: StateFlow<Boolean> = _showBars.asStateFlow()
+
+    private val _showNextBookPrompt = MutableStateFlow<NextBookInfo?>(null)
+    val showNextBookPrompt: StateFlow<NextBookInfo?> = _showNextBookPrompt.asStateFlow()
+    private var nextBookChecked = false
 
     private var navigator: EpubNavigatorFragment? = null
     private var locatorJob: Job? = null
@@ -169,6 +180,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun openBook(bookId: String) {
         if (currentBookId == bookId) return
         currentBookId = bookId
+        nextBookChecked = false
+        _showNextBookPrompt.value = null
 
         viewModelScope.launch {
             _uiState.value = ReaderUiState(isLoading = true)
@@ -229,6 +242,30 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 savePositionForLocator(bookId, locator)
             }
         }
+
+        checkEndOfBook(bookId, locator)
+    }
+
+    private fun checkEndOfBook(bookId: String, locator: Locator) {
+        val totalProgression = locator.locations.totalProgression ?: return
+        if (totalProgression < END_OF_BOOK_THRESHOLD || nextBookChecked) return
+        nextBookChecked = true
+
+        viewModelScope.launch {
+            val book = app.database.bookDao().getByIdOnce(bookId) ?: return@launch
+            val series = book.series ?: return@launch
+            val index = book.seriesIndex ?: return@launch
+            val nextBook = app.database.bookDao().getNextBookInSeries(series, index) ?: return@launch
+            _showNextBookPrompt.value = NextBookInfo(
+                bookId = nextBook.bookId,
+                title = nextBook.title,
+                seriesName = series
+            )
+        }
+    }
+
+    fun dismissNextBookPrompt() {
+        _showNextBookPrompt.value = null
     }
 
     private fun savePositionForLocator(bookId: String, locator: Locator) {

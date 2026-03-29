@@ -76,4 +76,14 @@ interface BookDao {
 
     @Query("UPDATE books SET seriesIndex = :seriesIndex WHERE bookId = :bookId")
     suspend fun updateSeriesIndex(bookId: String, seriesIndex: Float?)
+
+    @Query(
+        """SELECT * FROM books
+           WHERE series = :series
+             AND seriesIndex > :currentIndex
+             AND hidden = 0
+           ORDER BY seriesIndex ASC
+           LIMIT 1"""
+    )
+    suspend fun getNextBookInSeries(series: String, currentIndex: Float): BookEntity?
 }

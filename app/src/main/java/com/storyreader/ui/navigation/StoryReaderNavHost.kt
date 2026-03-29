@@ -71,7 +71,12 @@ fun StoryReaderNavHost() {
             val bookId = backStackEntry.arguments?.getString("bookId") ?: return@composable
             ReaderScreen(
                 bookId = bookId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToBook = { nextBookId ->
+                    navController.navigate(Screen.Reader.createRoute(nextBookId)) {
+                        popUpTo(Screen.Reader.route) { inclusive = true }
+                    }
+                }
             )
         }
         composable(Screen.AppSettings.route) {
