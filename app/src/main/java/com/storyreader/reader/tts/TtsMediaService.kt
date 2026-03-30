@@ -683,6 +683,17 @@ private class NowPlayingPlayer(player: Player) : ForwardingPlayer(player) {
         super.removeListener(listener)
     }
 
+    override fun getAvailableCommands(): Player.Commands {
+        // Readium's TTS player doesn't advertise SET_MEDIA_ITEM / CHANGE_MEDIA_ITEMS
+        // because it's a single-track player. Without these, Android Auto thinks the app
+        // can't accept new media selections and silently ignores browse-item taps,
+        // jumping back to Now Playing instead of switching books.
+        return super.getAvailableCommands().buildUpon()
+            .add(Player.COMMAND_SET_MEDIA_ITEM)
+            .add(Player.COMMAND_CHANGE_MEDIA_ITEMS)
+            .build()
+    }
+
     override fun getMediaMetadata(): MediaMetadata {
         return customMetadata ?: super.getMediaMetadata()
     }
