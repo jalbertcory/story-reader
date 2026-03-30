@@ -201,8 +201,10 @@ fun ReaderScreen(
     DisposableEffect(window) {
         val originalBrightness = window?.attributes?.screenBrightness ?: -1f
         onDispose {
-            window?.attributes = window.attributes.apply {
-                screenBrightness = originalBrightness
+            window?.let { w ->
+                w.attributes = w.attributes.apply {
+                    screenBrightness = originalBrightness
+                }
             }
         }
     }
@@ -826,24 +828,28 @@ private fun EpubReaderContent(
             }
         },
         update = { _ ->
-            val fm = activity.supportFragmentManager
-            if (fm.findFragmentByTag(navigatorTag) == null) {
-                fm.fragmentFactory = fragmentFactory
-                fm.beginTransaction()
-                    .replace(containerId, EpubNavigatorFragment::class.java, null, navigatorTag)
-                    .commitNow()
+            if (!activity.isDestroyed) {
+                val fm = activity.supportFragmentManager
+                if (fm.findFragmentByTag(navigatorTag) == null) {
+                    fm.fragmentFactory = fragmentFactory
+                    fm.beginTransaction()
+                        .replace(containerId, EpubNavigatorFragment::class.java, null, navigatorTag)
+                        .commitNow()
+                }
+                val nav = fm.findFragmentByTag(navigatorTag) as? EpubNavigatorFragment
+                if (nav != null) viewModel.onNavigatorReady(nav)
             }
-            val nav = fm.findFragmentByTag(navigatorTag) as? EpubNavigatorFragment
-            if (nav != null) viewModel.onNavigatorReady(nav)
         },
         modifier = modifier
     )
 
     DisposableEffect(navigatorTag) {
         onDispose {
-            val fm = activity.supportFragmentManager
-            fm.findFragmentByTag(navigatorTag)?.let { fragment ->
-                fm.beginTransaction().remove(fragment).commitAllowingStateLoss()
+            if (!activity.isDestroyed && !activity.isFinishing) {
+                val fm = activity.supportFragmentManager
+                fm.findFragmentByTag(navigatorTag)?.let { fragment ->
+                    fm.beginTransaction().remove(fragment).commitAllowingStateLoss()
+                }
             }
         }
     }
