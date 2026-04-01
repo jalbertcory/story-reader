@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,11 +20,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,7 +42,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.storyreader.data.catalog.ServerBook
@@ -59,6 +67,23 @@ fun SeriesBrowserScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val coverImageLoader = remember(uiState.authHeader) {
+        val clientBuilder = OkHttpClient.Builder()
+        val authHeader = uiState.authHeader
+        if (authHeader != null) {
+            clientBuilder.addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("Authorization", authHeader)
+                        .build()
+                )
+            }
+        }
+        ImageLoader.Builder(context)
+            .okHttpClient(clientBuilder.build())
+            .build()
+    }
 
     LaunchedEffect(uiState.importSuccessMessage) {
         uiState.importSuccessMessage?.let { msg ->
@@ -85,15 +110,56 @@ fun SeriesBrowserScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TextField(
-                value = uiState.searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
+            var showGenreFilter by rememberSaveable { mutableStateOf(false) }
+
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search series and books...") },
-                singleLine = true
-            )
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = uiState.searchQuery,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Search series and books...") },
+                    singleLine = true
+                )
+                if (uiState.allGenres.isNotEmpty()) {
+                    IconButton(onClick = { showGenreFilter = !showGenreFilter }) {
+                        Icon(
+                            imageVector = Icons.Filled.FilterList,
+                            contentDescription = "Filter by genre",
+                            tint = if (uiState.genreFilters.isNotEmpty() || showGenreFilter) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                }
+            }
+
+            @OptIn(ExperimentalLayoutApi::class)
+            AnimatedVisibility(visible = showGenreFilter && uiState.allGenres.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    uiState.allGenres.forEach { genre ->
+                        FilterChip(
+                            selected = uiState.genreFilters.any { it.equals(genre, ignoreCase = true) },
+                            onClick = { viewModel.toggleGenreFilter(genre) },
+                            label = { Text(genre, style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(32.dp)
+                        )
+                    }
+                }
+            }
 
             when {
                 uiState.isLoading -> {
@@ -122,7 +188,7 @@ fun SeriesBrowserScreen(
                     }
                 }
                 else -> {
-                    SeriesBrowserContent(uiState, viewModel)
+                    SeriesBrowserContent(uiState, viewModel, coverImageLoader)
                 }
             }
         }
@@ -132,7 +198,8 @@ fun SeriesBrowserScreen(
 @Composable
 private fun SeriesBrowserContent(
     uiState: SeriesBrowserUiState,
-    viewModel: SeriesBrowserViewModel
+    viewModel: SeriesBrowserViewModel,
+    coverImageLoader: ImageLoader
 ) {
     // Combine name-matched series and book-matched series
     val bookMatchedSeriesNames = uiState.seriesMatchedByBook.keys
@@ -153,7 +220,7 @@ private fun SeriesBrowserContent(
                 )
             }
             items(allVisibleSeries, key = { "series_${it.name}" }) { series ->
-                SeriesCard(series, uiState, viewModel)
+                SeriesCard(series, uiState, viewModel, coverImageLoader)
             }
         }
 
@@ -172,7 +239,7 @@ private fun SeriesBrowserContent(
                     isImporting = uiState.importingBookId == book.id,
                     importEnabled = uiState.importingBookId == null && uiState.importingSeriesName == null,
                     serverBaseUrl = uiState.serverBaseUrl,
-                    authHeader = uiState.authHeader,
+                    coverImageLoader = coverImageLoader,
                     onImport = { viewModel.importBook(book) }
                 )
             }
@@ -184,7 +251,8 @@ private fun SeriesBrowserContent(
 private fun SeriesCard(
     series: com.storyreader.data.catalog.SeriesSummary,
     uiState: SeriesBrowserUiState,
-    viewModel: SeriesBrowserViewModel
+    viewModel: SeriesBrowserViewModel,
+    coverImageLoader: ImageLoader
 ) {
     val isExpanded = series.name in uiState.expandedSeries
     val isImporting = uiState.importingSeriesName == series.name
@@ -212,7 +280,7 @@ private fun SeriesCard(
                 AuthenticatedCoverImage(
                     coverUrl = series.coverUrl,
                     serverBaseUrl = uiState.serverBaseUrl,
-                    authHeader = uiState.authHeader,
+                    imageLoader = coverImageLoader,
                     contentDescription = "Cover of ${series.name}"
                 )
                 Column(modifier = Modifier.weight(1f)) {
@@ -226,6 +294,7 @@ private fun SeriesCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    GenreTagRow(series.genreTags)
                 }
                 Button(
                     onClick = { viewModel.importSeries(series.name) },
@@ -278,7 +347,7 @@ private fun SeriesCard(
                                 importEnabled = uiState.importingBookId == null
                                     && uiState.importingSeriesName == null,
                                 serverBaseUrl = uiState.serverBaseUrl,
-                                authHeader = uiState.authHeader,
+                                coverImageLoader = coverImageLoader,
                                 onImport = { viewModel.importBook(book) }
                             )
                         }
@@ -295,7 +364,7 @@ private fun BookCard(
     isImporting: Boolean,
     importEnabled: Boolean,
     serverBaseUrl: String,
-    authHeader: String?,
+    coverImageLoader: ImageLoader,
     onImport: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -309,7 +378,7 @@ private fun BookCard(
             AuthenticatedCoverImage(
                 coverUrl = book.coverUrl,
                 serverBaseUrl = serverBaseUrl,
-                authHeader = authHeader,
+                imageLoader = coverImageLoader,
                 contentDescription = "Cover of ${book.title}"
             )
             Column(modifier = Modifier.weight(1f)) {
@@ -346,27 +415,19 @@ private fun BookCard(
 private fun AuthenticatedCoverImage(
     coverUrl: String?,
     serverBaseUrl: String,
-    authHeader: String?,
+    imageLoader: ImageLoader,
     contentDescription: String
 ) {
     if (coverUrl == null) return
-    val fullUrl = if (coverUrl.startsWith("http")) coverUrl else "$serverBaseUrl$coverUrl"
-    val context = LocalContext.current
-    val imageLoader = remember(authHeader) {
-        val clientBuilder = OkHttpClient.Builder()
-        if (authHeader != null) {
-            clientBuilder.addInterceptor { chain ->
-                chain.proceed(
-                    chain.request().newBuilder()
-                        .header("Authorization", authHeader)
-                        .build()
-                )
-            }
-        }
-        coil.ImageLoader.Builder(context)
-            .okHttpClient(clientBuilder.build())
-            .build()
+    val path = if (coverUrl.startsWith("http")) {
+        // Extract path from absolute URL — always resolve against the configured server base
+        // to avoid HTTP/HTTPS mismatches with production servers.
+        android.net.Uri.parse(coverUrl).path ?: coverUrl
+    } else {
+        coverUrl
     }
+    val fullUrl = "$serverBaseUrl$path"
+    val context = LocalContext.current
     AsyncImage(
         model = ImageRequest.Builder(context)
             .data(fullUrl)
@@ -380,6 +441,34 @@ private fun AuthenticatedCoverImage(
             .height(56.dp)
             .clip(RoundedCornerShape(4.dp))
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GenreTagRow(tags: List<String>) {
+    if (tags.isEmpty()) return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.padding(top = 2.dp)
+    ) {
+        tags.forEach { tag ->
+            Text(
+                text = tag,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(vertical = 1.dp)
+            )
+            if (tag != tags.last()) {
+                Text(
+                    text = "\u00B7",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 1.dp)
+                )
+            }
+        }
+    }
 }
 
 private fun formatWordCount(words: Int): String = when {

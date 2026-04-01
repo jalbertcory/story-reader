@@ -21,6 +21,8 @@ data class SeriesBrowserUiState(
     val standaloneBooks: List<ServerBook> = emptyList(),
     val filteredStandaloneBooks: List<ServerBook> = emptyList(),
     val searchQuery: String = "",
+    val genreFilters: Set<String> = emptySet(),
+    val allGenres: List<String> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val importingSeriesName: String? = null,
@@ -83,12 +85,18 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
 
             val series = seriesResult.getOrDefault(emptyList())
             val standalone = standaloneResult.getOrDefault(emptyList())
-            val query = _uiState.value.searchQuery
-            _uiState.value = _uiState.value.copy(
+            val state = _uiState.value
+            val allGenres = series.flatMap { it.genreTags }
+                .map { it.lowercase() to it }
+                .distinctBy { it.first }
+                .sortedBy { it.first }
+                .map { it.second }
+            _uiState.value = state.copy(
                 allSeries = series,
-                filteredSeries = filterSeries(series, query),
+                filteredSeries = filterSeries(series, state.searchQuery, state.genreFilters),
                 standaloneBooks = standalone,
-                filteredStandaloneBooks = filterStandaloneBooks(standalone, query),
+                filteredStandaloneBooks = filterStandaloneBooks(standalone, state.searchQuery),
+                allGenres = allGenres,
                 isLoading = false
             )
 
@@ -108,10 +116,10 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
         }
         allSeriesBooks = result
         allBooksFetched = true
-        // Re-apply search if there's an active query
-        val query = _uiState.value.searchQuery
-        if (query.isNotBlank()) {
-            applySearch(query)
+        // Re-apply filters if there's an active query or genre filter
+        val state = _uiState.value
+        if (state.searchQuery.isNotBlank() || state.genreFilters.isNotEmpty()) {
+            applyFilters()
         }
     }
 
@@ -157,12 +165,24 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
 
     fun setSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
-        applySearch(query)
+        applyFilters()
     }
 
-    private fun applySearch(query: String) {
+    fun toggleGenreFilter(genre: String) {
+        val current = _uiState.value.genreFilters
+        val updated = if (genre.lowercase() in current.map { it.lowercase() }.toSet()) {
+            current.filterNot { it.equals(genre, ignoreCase = true) }.toSet()
+        } else {
+            current + genre
+        }
+        _uiState.value = _uiState.value.copy(genreFilters = updated)
+        applyFilters()
+    }
+
+    private fun applyFilters() {
         val state = _uiState.value
-        val filteredSeries = filterSeries(state.allSeries, query)
+        val query = state.searchQuery
+        val filteredSeries = filterSeries(state.allSeries, query, state.genreFilters)
         val filteredStandalone = filterStandaloneBooks(state.standaloneBooks, query)
 
         // Find series where individual books match the query
@@ -255,10 +275,18 @@ class SeriesBrowserViewModel(application: Application) : AndroidViewModel(applic
         _uiState.value = _uiState.value.copy(importSuccessMessage = null)
     }
 
-    private fun filterSeries(series: List<SeriesSummary>, query: String): List<SeriesSummary> {
-        if (query.isBlank()) return series
-        val lowerQuery = query.lowercase()
-        return series.filter { it.name.lowercase().contains(lowerQuery) }
+    private fun filterSeries(
+        series: List<SeriesSummary>,
+        query: String,
+        genreFilters: Set<String> = emptySet()
+    ): List<SeriesSummary> {
+        val lowerFilters = genreFilters.map { it.lowercase() }.toSet()
+        return series.filter { s ->
+            val matchesQuery = query.isBlank() || s.name.lowercase().contains(query.lowercase())
+            val matchesGenre = lowerFilters.isEmpty() ||
+                lowerFilters.all { filter -> s.genreTags.any { it.lowercase() == filter } }
+            matchesQuery && matchesGenre
+        }
     }
 
     private fun filterStandaloneBooks(books: List<ServerBook>, query: String): List<ServerBook> {

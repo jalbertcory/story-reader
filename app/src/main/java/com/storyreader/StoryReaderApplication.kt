@@ -1,9 +1,11 @@
 package com.storyreader
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.work.Configuration
 import com.storyreader.data.catalog.OpdsCatalogRepository
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.catalog.StoryManagerApiClient
@@ -29,7 +31,14 @@ import com.storyreader.data.sync.WebDavSyncRepository
 import com.storyreader.reader.epub.EpubRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 
-open class StoryReaderApplication : Application() {
+open class StoryReaderApplication : Application(), Configuration.Provider {
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setInitializationExceptionHandler { e ->
+                Log.w("StoryReaderApp", "WorkManager initialization failed", e)
+            }
+            .build()
 
     open val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
 

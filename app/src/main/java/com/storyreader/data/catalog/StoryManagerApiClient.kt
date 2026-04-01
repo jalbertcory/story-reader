@@ -15,7 +15,8 @@ data class SeriesSummary(
     val bookCount: Int,
     val totalWords: Int,
     val latestUpdate: String?,
-    val coverUrl: String?
+    val coverUrl: String?,
+    val genreTags: List<String> = emptyList()
 )
 
 data class ServerBook(
@@ -59,12 +60,19 @@ class StoryManagerApiClient(
                 val obj = arr.getJSONObject(i)
                 val cover = obj.optStringOrNull("cover_url")
                 Log.d(TAG, "series=${obj.getString("name")} coverUrl=$cover")
+                val genreTagsArr = obj.optJSONArray("genre_tags")
+                val genreTags = if (genreTagsArr != null) {
+                    (0 until genreTagsArr.length()).map { j -> genreTagsArr.getString(j) }
+                } else {
+                    emptyList()
+                }
                 SeriesSummary(
                     name = obj.getString("name"),
                     bookCount = obj.getInt("book_count"),
                     totalWords = obj.getInt("total_words"),
                     latestUpdate = obj.optStringOrNull("latest_update"),
-                    coverUrl = cover
+                    coverUrl = cover,
+                    genreTags = genreTags
                 )
             }
         }
