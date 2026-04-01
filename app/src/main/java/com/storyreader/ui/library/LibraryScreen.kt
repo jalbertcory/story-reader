@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
@@ -50,8 +53,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -307,6 +312,20 @@ fun LibraryScreen(
     }
 }
 
+private fun resolveResumeBook(
+    group: LibrarySeriesGroup,
+    lastReadTimes: Map<String, Long>
+): BookEntity? {
+    // Last-read book in the series (that isn't finished)
+    val lastRead = group.books
+        .filter { lastReadTimes.containsKey(it.bookId) && it.totalProgression < 1f }
+        .maxByOrNull { lastReadTimes[it.bookId] ?: 0L }
+    if (lastRead != null) return lastRead
+
+    // Otherwise, first book by series index that isn't 100% read
+    return group.books.firstOrNull { it.totalProgression < 1f }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LibraryGroupedList(
@@ -340,13 +359,36 @@ private fun LibraryGroupedList(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            group.books.firstOrNull()?.coverUri?.let { coverUri ->
+                            val resumeBook = resolveResumeBook(group, lastReadTimes)
+                            Box(
+                                modifier = Modifier
+                                    .clickable(enabled = resumeBook != null) {
+                                        resumeBook?.let { onBookClick(it.bookId) }
+                                    },
+                                contentAlignment = Alignment.BottomEnd
+                            ) {
                                 BookCoverThumbnail(
-                                    coverUri = coverUri,
+                                    coverUri = group.books.firstOrNull()?.coverUri,
                                     title = group.seriesName,
-                                    width = 56.dp,
-                                    height = 80.dp
+                                    width = 72.dp,
+                                    height = 104.dp
                                 )
+                                if (resumeBook != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Resume series",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                }
                             }
                             Column(
                                 modifier = Modifier
@@ -440,8 +482,8 @@ private fun LibraryBookCard(
             BookCoverThumbnail(
                 coverUri = book.coverUri,
                 title = book.title,
-                width = 56.dp,
-                height = 80.dp
+                width = 64.dp,
+                height = 92.dp
             )
             Column(
                 modifier = Modifier

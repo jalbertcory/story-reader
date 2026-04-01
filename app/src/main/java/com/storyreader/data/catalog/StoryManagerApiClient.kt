@@ -165,6 +165,20 @@ class StoryManagerApiClient(
         }
     }
 
+    fun downloadCoverImage(coverUrl: String): Result<ByteArray> = runCatching {
+        val resolvedUrl = if (coverUrl.startsWith("http")) coverUrl else "${baseUrl()}$coverUrl"
+        val url = resolvedUrl.replace("http://", "https://")
+        val request = Request.Builder()
+            .url(url)
+            .applyAuth()
+            .build()
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IllegalStateException("Cover download failed: ${response.code}")
+            response.body?.bytes() ?: throw IllegalStateException("Empty cover response")
+        }
+    }
+
     private fun parseServerBooks(json: String): List<ServerBook> {
         val arr = JSONArray(json)
         return (0 until arr.length()).map { i ->

@@ -1,6 +1,7 @@
 package com.storyreader.data.repository
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import com.storyreader.data.catalog.ServerBook
 import com.storyreader.data.catalog.StoryManagerApiClient
@@ -94,7 +95,7 @@ class StoryManagerRepository(
         imported
     }
 
-    suspend fun checkForNewBooks(): Result<Int> = withContext(Dispatchers.IO) { runCatching {
+    suspend fun checkForNewBooks(): Result<List<String>> = withContext(Dispatchers.IO) { runCatching {
         // Single request to get all books from the server
         val allServerBooks = apiClient.fetchAllBooks().getOrThrow()
         val existingServerIds = bookDao.getAllServerBookIds().toSet()
@@ -107,7 +108,7 @@ class StoryManagerRepository(
             "${it.title.lowercase()}|${it.author.lowercase()}"
         }
 
-        var imported = 0
+        val importedTitles = mutableListOf<String>()
 
         // Index local books by serverBookId for series order updates
         val localByServerId = allLocalBooks.filter { it.serverBookId != null }
@@ -146,11 +147,31 @@ class StoryManagerRepository(
             importSingleBook(serverBook)
                 .onFailure { e -> Log.w(TAG, "Failed to import '${serverBook.title}'", e) }
                 .getOrNull() ?: continue
-            imported++
+            importedTitles.add(serverBook.title)
         }
 
-        Log.d(TAG, "checkForNewBooks: imported $imported new books")
-        imported
+        // Backfill missing covers from server
+        val booksWithoutCovers = allLocalBooks.filter { it.coverUri == null && it.serverBookId != null }
+        if (booksWithoutCovers.isNotEmpty()) {
+            val serverBooksById = allServerBooks.associateBy { it.id }
+            for (book in booksWithoutCovers) {
+                val serverBook = serverBooksById[book.serverBookId] ?: continue
+                val coverUrl = serverBook.coverUrl ?: continue
+                runCatching {
+                    val bytes = apiClient.downloadCoverImage(coverUrl).getOrThrow()
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    saveCover(bitmap)?.let { path ->
+                        bookDao.updateCoverUri(book.bookId, path)
+                        Log.d(TAG, "checkForNewBooks: backfilled cover for '${book.title}'")
+                    }
+                }.onFailure { e ->
+                    Log.w(TAG, "Failed to backfill cover for '${book.title}'", e)
+                }
+            }
+        }
+
+        Log.d(TAG, "checkForNewBooks: imported ${importedTitles.size} new books")
+        importedTitles
     } }
 
     suspend fun checkForUpdates(): Result<Int> = withContext(Dispatchers.IO) { runCatching {

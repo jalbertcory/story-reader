@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -165,10 +166,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isCheckingNewBooks = true, error = null, newBooksMessage = null)
             app.storyManagerRepository.checkForNewBooks()
-                .onSuccess { count ->
+                .onSuccess { titles ->
                     _uiState.value = _uiState.value.copy(
-                        newBooksMessage = if (count > 0) "$count new book${if (count > 1) "s" else ""} added"
-                            else "No new books found"
+                        newBooksMessage = if (titles.isNotEmpty()) {
+                            "Added: ${titles.joinToString(", ")}"
+                        } else {
+                            "No new books found"
+                        }
                     )
                 }
                 .onFailure { e ->
@@ -177,6 +181,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             _uiState.value = _uiState.value.copy(isCheckingNewBooks = false)
+            if (_uiState.value.newBooksMessage != null) {
+                delay(4000L)
+                clearNewBooksMessage()
+            }
         }
     }
 
