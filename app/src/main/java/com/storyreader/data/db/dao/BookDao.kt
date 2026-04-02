@@ -77,6 +77,9 @@ interface BookDao {
     @Query("UPDATE books SET seriesIndex = :seriesIndex WHERE bookId = :bookId")
     suspend fun updateSeriesIndex(bookId: String, seriesIndex: Float?)
 
+    @Query("UPDATE books SET coverUri = :coverUri WHERE bookId = :bookId")
+    suspend fun updateCoverUri(bookId: String, coverUri: String)
+
     @Query(
         """SELECT * FROM books
            WHERE series = :series
