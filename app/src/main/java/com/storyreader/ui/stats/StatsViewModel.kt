@@ -9,6 +9,8 @@ import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.dao.BookSessionStats
 import com.storyreader.data.db.dao.MonthlyReadingStat
 import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.db.entity.ReadingSessionEntity
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -188,6 +190,15 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(
             globalStats = _uiState.value.globalStats?.copy(goalHoursPerYear = hours)
         )
+    }
+
+    fun getSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =
+        sessionDao.getSessionsForBook(bookId)
+
+    fun markAsRead(bookId: String) {
+        viewModelScope.launch {
+            bookRepository.updateProgression(bookId, 1f)
+        }
     }
 
     fun setGoalWords(words: Int) {

@@ -13,22 +13,25 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material3.Button
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -36,6 +39,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -57,6 +61,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -69,7 +74,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private fun formatLastRead(timestampMs: Long): String {
+internal fun formatLastRead(timestampMs: Long): String {
     val now = System.currentTimeMillis()
     val diffDays = ((now - timestampMs) / (1000L * 60 * 60 * 24)).toInt()
     return when {
@@ -80,7 +85,7 @@ private fun formatLastRead(timestampMs: Long): String {
     }
 }
 
-private fun formatCompactWordCount(words: Int): String {
+internal fun formatCompactWordCount(words: Int): String {
     return when {
         words >= 1_000_000 -> "%.1fM words".format(words / 1_000_000.0)
         words >= 1_000 -> "%.1fK words".format(words / 1_000.0)
@@ -225,6 +230,7 @@ fun LibraryScreen(
                     uiState.selectedTab == 1 && uiState.isStoryManagerBackend -> {
                         WebStoriesTab(
                             books = uiState.webBooks,
+                            lastReadTimes = uiState.lastReadTimes,
                             isCheckingUpdates = uiState.isCheckingUpdates,
                             onCheckForUpdates = { viewModel.checkForWebUpdates() },
                             onBookClick = onBookClick
@@ -248,34 +254,16 @@ fun LibraryScreen(
                     }
                 }
                 else -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        LibraryGroupedList(
-                            groups = uiState.libraryGroups,
-                            lastReadTimes = uiState.lastReadTimes,
-                            onBookClick = onBookClick,
-                            onBookLongClick = { selectedBookForDetail = it },
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (uiState.isStoryManagerBackend) {
-                            Button(
-                                onClick = { viewModel.checkForNewBooks() },
-                                enabled = !uiState.isCheckingNewBooks,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                if (uiState.isCheckingNewBooks) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                } else {
-                                    Text("Check for New Books")
-                                }
-                            }
-                        }
-                    }
+                    LibraryGroupedList(
+                        groups = uiState.libraryGroups,
+                        lastReadTimes = uiState.lastReadTimes,
+                        onBookClick = onBookClick,
+                        onBookLongClick = { selectedBookForDetail = it },
+                        showCheckForNewBooks = uiState.isStoryManagerBackend,
+                        isCheckingNewBooks = uiState.isCheckingNewBooks,
+                        onCheckForNewBooks = { viewModel.checkForNewBooks() },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
 
@@ -306,7 +294,9 @@ fun LibraryScreen(
     selectedBookForDetail?.let { book ->
         BookDetailSheet(
             book = book,
-            viewModel = viewModel,
+            sessionsFlow = viewModel.getSessionsForBook(book.bookId),
+            onMarkAsRead = { viewModel.markAsRead(book.bookId) },
+            onHideBook = { viewModel.hideBook(book.bookId) },
             onDismiss = { selectedBookForDetail = null }
         )
     }
@@ -333,6 +323,9 @@ private fun LibraryGroupedList(
     lastReadTimes: Map<String, Long>,
     onBookClick: (String) -> Unit,
     onBookLongClick: (BookEntity) -> Unit,
+    showCheckForNewBooks: Boolean = false,
+    isCheckingNewBooks: Boolean = false,
+    onCheckForNewBooks: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val expandedSeries = remember { mutableStateMapOf<String, Boolean>() }
@@ -403,16 +396,18 @@ private fun LibraryGroupedList(
                                     text = buildString {
                                         append("${group.books.size} books")
                                         if (group.totalWordCount > 0) {
-                                            append(", ${formatCompactWordCount(group.totalWordCount)}")
+                                            append(" · ${formatCompactWordCount(group.totalWordCount)}")
                                         }
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (group.totalWordCount > 0) {
-                                    BookProgressRow(
-                                        progress = group.totalProgression,
-                                        modifier = Modifier.padding(top = 6.dp)
+                                if (group.totalWordCount > 0 && group.totalProgression > 0f && group.totalProgression < 1f) {
+                                    val wordsRemaining = (group.totalWordCount * (1f - group.totalProgression)).toInt()
+                                    Text(
+                                        text = "${formatCompactWordCount(wordsRemaining)} remaining",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 group.lastReadTime?.let { lastRead ->
@@ -420,6 +415,12 @@ private fun LibraryGroupedList(
                                         text = "Last read ${formatLastRead(lastRead)}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (group.totalWordCount > 0) {
+                                    BookProgressRow(
+                                        progress = group.totalProgression,
+                                        modifier = Modifier.padding(top = 6.dp)
                                     )
                                 }
                             }
@@ -459,16 +460,36 @@ private fun LibraryGroupedList(
                 )
             }
         }
+        if (showCheckForNewBooks) {
+            item(key = "check_new_books") {
+                OutlinedButton(
+                    onClick = onCheckForNewBooks,
+                    enabled = !isCheckingNewBooks,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isCheckingNewBooks) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Checking...")
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Check for New Books")
+                    }
+                }
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LibraryBookCard(
+internal fun LibraryBookCard(
     book: BookEntity,
     lastReadAt: Long?,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    newWordsCount: Int = 0
 ) {
     Card(
         modifier = Modifier
@@ -503,10 +524,24 @@ private fun LibraryBookCard(
                 }
                 if (book.wordCount > 0) {
                     Text(
-                        text = formatCompactWordCount(book.wordCount),
+                        text = buildString {
+                            append(formatCompactWordCount(book.wordCount))
+                            if (book.totalProgression > 0f && book.totalProgression < 1f) {
+                                val wordsRemaining = (book.wordCount * (1f - book.totalProgression)).toInt()
+                                append(" · ${formatCompactWordCount(wordsRemaining)} remaining")
+                            }
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (newWordsCount > 0) {
+                    Badge(
+                        containerColor = Color(0xFF4CAF50),
+                        contentColor = Color.White
+                    ) {
+                        Text("+${formatCompactWordCount(newWordsCount)}")
+                    }
                 }
                 if (lastReadAt != null) {
                     Text(
