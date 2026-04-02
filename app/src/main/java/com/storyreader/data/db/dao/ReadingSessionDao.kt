@@ -30,8 +30,11 @@ data class BookSessionStats(
 
 @Dao
 interface ReadingSessionDao {
-    @Query("SELECT * FROM reading_sessions WHERE bookId = :bookId ORDER BY startTime DESC")
+    @Query("SELECT * FROM reading_sessions WHERE bookId = :bookId AND durationSeconds > 0 ORDER BY startTime DESC")
     fun getSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>>
+
+    @Query("DELETE FROM reading_sessions WHERE durationSeconds = 0 AND startTime < :beforeMs")
+    suspend fun deleteOrphanedSessions(beforeMs: Long)
 
     @Query("SELECT * FROM reading_sessions ORDER BY startTime DESC")
     fun getAllSessions(): Flow<List<ReadingSessionEntity>>

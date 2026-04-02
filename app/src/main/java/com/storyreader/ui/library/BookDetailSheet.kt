@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.db.entity.ReadingSessionEntity
 import com.storyreader.ui.components.BookCoverThumbnail
+import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,11 +48,13 @@ import java.util.Locale
 @Composable
 fun BookDetailSheet(
     book: BookEntity,
-    viewModel: LibraryViewModel,
+    sessionsFlow: Flow<List<ReadingSessionEntity>>,
+    onMarkAsRead: (() -> Unit)?,
+    onHideBook: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val sessions by viewModel.getSessionsForBook(book.bookId).collectAsState(initial = emptyList())
+    val sessions by sessionsFlow.collectAsState(initial = emptyList())
     var showRemoveConfirm by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy  h:mm a", Locale.getDefault()) }
 
@@ -159,10 +162,10 @@ fun BookDetailSheet(
             item {
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(4.dp))
-                if (book.totalProgression < 1f) {
+                if (onMarkAsRead != null && book.totalProgression < 1f) {
                     OutlinedButton(
                         onClick = {
-                            viewModel.markAsRead(book.bookId)
+                            onMarkAsRead()
                             onDismiss()
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -173,23 +176,25 @@ fun BookDetailSheet(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
-                OutlinedButton(
-                    onClick = { showRemoveConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Remove from Library")
+                if (onHideBook != null) {
+                    OutlinedButton(
+                        onClick = { showRemoveConfirm = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Remove from Library")
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 
-    if (showRemoveConfirm) {
+    if (showRemoveConfirm && onHideBook != null) {
         AlertDialog(
             onDismissRequest = { showRemoveConfirm = false },
             title = { Text("Remove Book?") },
@@ -198,7 +203,7 @@ fun BookDetailSheet(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.hideBook(book.bookId)
+                    onHideBook()
                     showRemoveConfirm = false
                     onDismiss()
                 }) {

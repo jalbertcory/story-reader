@@ -1,6 +1,8 @@
 package com.storyreader.ui.stats
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.ui.library.BookDetailSheet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -61,6 +65,7 @@ fun StatsScreen(
     viewModel: StatsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var selectedBookForDetail by remember { mutableStateOf<BookEntity?>(null) }
 
     Scaffold(
         topBar = {
@@ -127,10 +132,23 @@ fun StatsScreen(
                     )
                 }
                 items(uiState.bookStats) { item ->
-                    BookStatCard(item)
+                    BookStatCard(
+                        item = item,
+                        onLongClick = { selectedBookForDetail = item.book }
+                    )
                 }
             }
         }
+    }
+
+    selectedBookForDetail?.let { book ->
+        BookDetailSheet(
+            book = book,
+            sessionsFlow = viewModel.getSessionsForBook(book.bookId),
+            onMarkAsRead = { viewModel.markAsRead(book.bookId) },
+            onHideBook = null,
+            onDismiss = { selectedBookForDetail = null }
+        )
     }
 }
 
@@ -360,15 +378,19 @@ private fun StatChip(value: String, label: String) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookStatCard(item: BookStatItem) {
+private fun BookStatCard(item: BookStatItem, onLongClick: () -> Unit) {
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
     // WPM based on manual reading only (not TTS)
     val manualWpm = if (item.manualDurationSeconds > 60)
         (item.manualWordsRead.toFloat() / (item.manualDurationSeconds / 60f)).toInt()
     else 0
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth().combinedClickable(
+        onClick = {},
+        onLongClick = onLongClick
+    )) {
         Row(modifier = Modifier.padding(12.dp)) {
             BookCoverThumbnail(
                 coverUri = item.book.coverUri,

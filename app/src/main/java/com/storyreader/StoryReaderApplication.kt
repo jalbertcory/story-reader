@@ -12,6 +12,9 @@ import com.storyreader.data.catalog.StoryManagerApiClient
 import com.storyreader.data.repository.StoryManagerRepository
 import com.storyreader.data.sync.WebBookUpdateScheduler
 import com.storyreader.data.db.AppDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.BookRepositoryImpl
 import com.storyreader.data.repository.ReadingRepository
@@ -142,6 +145,13 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
 
         if (opdsCredentialsManager.isStoryManagerBackend) {
             WebBookUpdateScheduler.schedulePeriodicSync(this)
+        }
+
+        // Clean up orphaned 0-duration reading sessions (from race conditions where
+        // startSession inserts a row but finalize never runs).
+        CoroutineScope(Dispatchers.IO).launch {
+            val cutoff = System.currentTimeMillis() - 60_000L // older than 1 minute
+            database.readingSessionDao().deleteOrphanedSessions(cutoff)
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
