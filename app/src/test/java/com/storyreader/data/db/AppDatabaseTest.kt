@@ -159,9 +159,9 @@ class AppDatabaseTest {
     fun `getSessionsForBook filters by bookId`() = runTest {
         db.bookDao().insert(BookEntity(bookId = "bA", title = "T", author = "A"))
         db.bookDao().insert(BookEntity(bookId = "bB", title = "T", author = "A"))
-        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "bA"))
-        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "bA"))
-        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "bB"))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "bA", durationSeconds = 60))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "bA", durationSeconds = 60))
+        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "bB", durationSeconds = 60))
 
         val sessions = db.readingSessionDao().getSessionsForBook("bA").first()
         assertEquals(2, sessions.size)

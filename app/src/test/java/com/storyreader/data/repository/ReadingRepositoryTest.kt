@@ -98,9 +98,11 @@ class ReadingRepositoryTest {
     @Test
     fun `observeSessionsForBook returns only sessions for that book`() = runTest {
         db.bookDao().insert(BookEntity(bookId = "book2", title = "Other", author = "Author"))
-        repository.startSession("book1")
-        repository.startSession("book1")
-        repository.startSession("book2")
+        // Insert sessions with non-zero duration (0-duration sessions are filtered as orphans)
+        val dao = db.readingSessionDao()
+        dao.insert(com.storyreader.data.db.entity.ReadingSessionEntity(bookId = "book1", durationSeconds = 60))
+        dao.insert(com.storyreader.data.db.entity.ReadingSessionEntity(bookId = "book1", durationSeconds = 60))
+        dao.insert(com.storyreader.data.db.entity.ReadingSessionEntity(bookId = "book2", durationSeconds = 60))
 
         val sessions = repository.observeSessionsForBook("book1").first()
         assertEquals(2, sessions.size)
