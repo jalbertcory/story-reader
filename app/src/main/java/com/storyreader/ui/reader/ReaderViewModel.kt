@@ -154,6 +154,27 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
+        override fun onTtsPaused() {
+            sessionTracker.onPause()
+        }
+
+        override fun onTtsResumed() {
+            if (sessionTracker.onResume()) {
+                // Pause was too long — split into a new session
+                sessionTracker.finalize(
+                    bookId = currentBookId ?: return,
+                    currentLocator = _currentLocator.value,
+                    currentChapterTitle = _currentChapter.value?.title,
+                    isWebBook = isWebBook
+                )
+                sessionTracker.startSession(
+                    bookId = currentBookId ?: return,
+                    isTts = true,
+                    currentProgression = _currentLocator.value?.locations?.totalProgression?.toFloat()
+                )
+            }
+        }
+
         override fun onTtsLocatorUpdate(locator: Locator) {
             _currentLocator.value = locator
         }
@@ -497,6 +518,28 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun openSystemTtsSettings() = ttsController.openSystemTtsSettings()
 
     // --- Session lifecycle ---
+
+    fun onAppPaused() {
+        if (ttsController.ttsState.value != TtsPlaybackState.PLAYING) {
+            sessionTracker.onPause()
+        }
+    }
+
+    fun onAppResumed() {
+        if (ttsController.ttsState.value != TtsPlaybackState.PLAYING) {
+            if (sessionTracker.onResume()) {
+                // Pause was too long — split into a new session
+                finalizeSession()
+                val bookId = currentBookId ?: return
+                val isTts = ttsController.ttsState.value == TtsPlaybackState.PAUSED
+                sessionTracker.startSession(
+                    bookId = bookId,
+                    isTts = isTts,
+                    currentProgression = _currentLocator.value?.locations?.totalProgression?.toFloat()
+                )
+            }
+        }
+    }
 
     fun finalizeSession() {
         sessionTracker.finalize(
