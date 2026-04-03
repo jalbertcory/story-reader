@@ -176,6 +176,20 @@ fun ReaderScreen(
     LaunchedEffect(bookId) { viewModel.openBook(bookId) }
     DisposableEffect(Unit) { onDispose { viewModel.finalizeSession() } }
 
+    // Track app lifecycle for pause/resume idle detection
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> viewModel.onAppPaused()
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> viewModel.onAppResumed()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Apply dark theme to app chrome when reading in dark/night mode
     val isDarkReadingTheme = preferences.theme == Theme.DARK || preferences.isNightTheme()
     val readerColorScheme = if (isDarkReadingTheme) darkColorScheme() else MaterialTheme.colorScheme

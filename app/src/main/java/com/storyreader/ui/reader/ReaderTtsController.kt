@@ -259,6 +259,8 @@ interface ReaderTtsDelegate {
 
     fun onTtsSessionStarting()
     fun onTtsSessionEnding(restartManualSession: Boolean)
+    fun onTtsPaused()
+    fun onTtsResumed()
     fun onTtsLocatorUpdate(locator: Locator)
     fun onTtsPageTurn()
     fun savePosition(bookId: String, locator: Locator)
@@ -406,11 +408,11 @@ class ReaderTtsController(
     fun ttsPlayPause() {
         when (_ttsState.value) {
             TtsPlaybackState.PLAYING -> {
-                delegate.onTtsSessionEnding(restartManualSession = false)
+                delegate.onTtsPaused()
                 ttsNavigator?.pause()
             }
             TtsPlaybackState.PAUSED -> {
-                delegate.onTtsSessionStarting()
+                delegate.onTtsResumed()
                 ttsNavigator?.play()
             }
             TtsPlaybackState.STOPPED -> startTts()

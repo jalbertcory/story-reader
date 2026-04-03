@@ -15,6 +15,7 @@ interface ReadingRepository {
         pageTurnTimestampsMs: List<Long>,
         sessionStartMs: Long,
         isTts: Boolean = false,
+        pauseIntervalsMs: List<Pair<Long, Long>> = emptyList(),
         progressionStart: Float = 0f,
         progressionEnd: Float = 0f,
         bookWordCount: Int = 0
@@ -44,6 +45,7 @@ class ReadingRepositoryImpl(
         pageTurnTimestampsMs: List<Long>,
         sessionStartMs: Long,
         isTts: Boolean,
+        pauseIntervalsMs: List<Pair<Long, Long>>,
         progressionStart: Float,
         progressionEnd: Float,
         bookWordCount: Int
@@ -51,9 +53,14 @@ class ReadingRepositoryImpl(
         val session = sessionDao.getById(sessionId) ?: return
         val nowMs = System.currentTimeMillis()
         val rawDuration = ((nowMs - sessionStartMs) / 1000).toInt()
-        // TTS plays at a constant rate — idle detection doesn't apply, use raw duration
-        val adjustedDuration = if (isTts) rawDuration
-            else calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs)
+        val totalPausedSeconds = (pauseIntervalsMs.sumOf { it.second - it.first } / 1000).toInt()
+        val adjustedDuration = if (isTts) {
+            // TTS plays at a constant rate — subtract known pauses only
+            (rawDuration - totalPausedSeconds).coerceAtLeast(0)
+        } else {
+            // Manual reading: statistical idle detection + known pause subtraction
+            calcAdjustedDuration(sessionStartMs, pageTurnTimestampsMs, nowMs, pauseIntervalsMs)
+        }
         val pagesTurned = pageTurnTimestampsMs.size
         val wordsRead = if (bookWordCount > 0 && progressionEnd > progressionStart)
             ((progressionEnd - progressionStart).coerceAtLeast(0f) * bookWordCount).toInt()
@@ -74,30 +81,7 @@ class ReadingRepositoryImpl(
         )
     }
 
-    /**
-     * Computes reading time by:
-     * - Discarding any page where the reader spent more than 3× the per-session average (idle detection).
-     * - Discarding any page turned in under 5 seconds (rapid skipping that would inflate WPM stats).
-     */
-    private fun calcAdjustedDuration(
-        sessionStartMs: Long,
-        pageTurnsMs: List<Long>,
-        endMs: Long
-    ): Int {
-        // Build list of time-on-page intervals: start → first turn, turn_i → turn_i+1, last → end
-        val allPoints = listOf(sessionStartMs) + pageTurnsMs + listOf(endMs)
-        val intervals = allPoints.zipWithNext { a, b -> (b - a).coerceAtLeast(0L) }
-        if (intervals.isEmpty()) return 0
-        val avgMs = intervals.average()
-        val threshold = avgMs * 3.0
-        return (intervals
-            .filter { it >= MIN_PAGE_INTERVAL_MS && it <= threshold }
-            .sum() / 1000
-        ).toInt()
-    }
-
     companion object {
-        private const val MIN_PAGE_INTERVAL_MS = 5_000L
         private const val MIN_WORDS_THRESHOLD = 50
         private const val MIN_DURATION_THRESHOLD = 30  // seconds
     }

@@ -5,6 +5,7 @@ import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.data.db.entity.ReadingSessionEntity
+import com.storyreader.util.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
@@ -30,6 +31,7 @@ class ReadingSessionTrackerTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val testScope = TestScope(testDispatcher)
+    private val testClock = TestClock()
 
     private lateinit var fakeReadingRepo: FakeReadingRepository
     private lateinit var fakeBookRepo: FakeBookRepository
@@ -39,8 +41,12 @@ class ReadingSessionTrackerTest {
     fun setUp() {
         fakeReadingRepo = FakeReadingRepository()
         fakeBookRepo = FakeBookRepository()
-        tracker = ReadingSessionTracker(fakeReadingRepo, fakeBookRepo, testScope)
+        tracker = ReadingSessionTracker(
+            fakeReadingRepo, fakeBookRepo, testScope, testClock
+        )
     }
+
+    // ── Basic session lifecycle ───────────────────────────────────────────────
 
     @Test
     fun `startSession calls repository startSession`() = testScope.runTest {
@@ -78,7 +84,6 @@ class ReadingSessionTrackerTest {
 
     @Test
     fun `finalize does nothing when no session started`() = testScope.runTest {
-        // finalize without startSession should be a no-op
         tracker.finalize("book1", null, null, false)
         advanceUntilIdle()
 
@@ -152,7 +157,6 @@ class ReadingSessionTrackerTest {
 
         assertEquals(0, fakeReadingRepo.savedPositions.size)
         assertEquals(0, fakeBookRepo.progressionUpdates.size)
-        // finalizeSession is still called
         assertEquals(1, fakeReadingRepo.finalizedSessions.size)
     }
 
@@ -178,7 +182,6 @@ class ReadingSessionTrackerTest {
         tracker.finalize("book1", locator, null, false)
         advanceUntilIdle()
 
-        // Second finalize — currentSessionId is already null
         tracker.finalize("book1", locator, null, false)
         advanceUntilIdle()
 
@@ -188,16 +191,148 @@ class ReadingSessionTrackerTest {
     @Test
     fun `startSessionSync returns suspend block that starts session`() = testScope.runTest {
         val block = tracker.startSessionSync("book1", isTts = true, currentProgression = 0.3f)
-        // Session not started yet
         assertEquals(0, fakeReadingRepo.startedSessions.size)
 
-        // Execute the block
         block()
 
         assertEquals(1, fakeReadingRepo.startedSessions.size)
         assertEquals("book1", fakeReadingRepo.startedSessions[0].first)
         assertTrue(fakeReadingRepo.startedSessions[0].second)
         assertEquals(0.3f, tracker.sessionStartProgression, 0.001f)
+    }
+
+    // ── Pause / Resume ───────────────────────────────────────────────────────
+
+    @Test
+    fun `onPause before session start is a no-op`() {
+        tracker.onPause()
+        // No crash, no state change
+        assertFalse(tracker.onResume())
+    }
+
+    @Test
+    fun `onPause is idempotent - second call does not change pause start`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 1000L
+        tracker.onPause()
+        testClock.timeMs = 5000L
+        tracker.onPause() // should be ignored
+
+        testClock.timeMs = 6000L
+        assertFalse(tracker.onResume()) // 6000 - 1000 = 5000ms, under split threshold
+    }
+
+    @Test
+    fun `onResume without onPause returns false`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        assertFalse(tracker.onResume())
+    }
+
+    @Test
+    fun `short pause is recorded and onResume returns false`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 10_000L
+        tracker.onPause()
+        testClock.timeMs = 70_000L // 60s pause
+        assertFalse(tracker.onResume())
+    }
+
+    @Test
+    fun `long pause triggers session split - onResume returns true`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 10_000L
+        tracker.onPause()
+        testClock.timeMs = 10_000L + ReadingSessionTracker.SESSION_SPLIT_THRESHOLD_MS
+        assertTrue(tracker.onResume()) // exactly at threshold
+    }
+
+    @Test
+    fun `finalize passes pause intervals to repository`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 10_000L
+        tracker.onPause()
+        testClock.timeMs = 70_000L
+        tracker.onResume()
+
+        testClock.timeMs = 100_000L
+        tracker.onPause()
+        testClock.timeMs = 130_000L
+        tracker.onResume()
+
+        tracker.finalize("book1", null, null, false)
+        advanceUntilIdle()
+
+        assertEquals(1, fakeReadingRepo.finalizedSessions.size)
+        val finalized = fakeReadingRepo.finalizedSessions[0]
+        assertEquals(2, finalized.pauseIntervalsMs.size)
+        assertEquals(10_000L to 70_000L, finalized.pauseIntervalsMs[0])
+        assertEquals(100_000L to 130_000L, finalized.pauseIntervalsMs[1])
+    }
+
+    @Test
+    fun `finalize closes active pause`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 10_000L
+        tracker.onPause()
+        // Don't resume — finalize should close the pause
+        testClock.timeMs = 50_000L
+        tracker.finalize("book1", null, null, false)
+        advanceUntilIdle()
+
+        val finalized = fakeReadingRepo.finalizedSessions[0]
+        assertEquals(1, finalized.pauseIntervalsMs.size)
+        assertEquals(10_000L to 50_000L, finalized.pauseIntervalsMs[0])
+    }
+
+    @Test
+    fun `startSession clears pause state from previous session`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 10_000L
+        tracker.onPause()
+        testClock.timeMs = 50_000L
+        tracker.onResume()
+
+        // Start a new session — should clear all pause state
+        tracker.startSession("book2")
+        advanceUntilIdle()
+
+        tracker.finalize("book2", null, null, false)
+        advanceUntilIdle()
+
+        // The finalized session for book2 should have no pause intervals
+        val finalized = fakeReadingRepo.finalizedSessions[0]
+        assertEquals(0, finalized.pauseIntervalsMs.size)
+    }
+
+    @Test
+    fun `recordPageTurn uses injected clock`() = testScope.runTest {
+        tracker.startSession("book1")
+        advanceUntilIdle()
+
+        testClock.timeMs = 5000L
+        tracker.recordPageTurn()
+        testClock.timeMs = 15000L
+        tracker.recordPageTurn()
+
+        tracker.finalize("book1", null, null, false)
+        advanceUntilIdle()
+
+        val finalized = fakeReadingRepo.finalizedSessions[0]
+        assertEquals(listOf(5000L, 15000L), finalized.pageTurnTimestampsMs)
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -214,13 +349,31 @@ class ReadingSessionTrackerTest {
         )
     )
 
+    // ── Test clock ──────────────────────────────────────────────────────────
+
+    private class TestClock : Clock {
+        var timeMs: Long = 0L
+        override fun currentTimeMillis(): Long = timeMs
+    }
+
     // ── Fake repositories ────────────────────────────────────────────────────
+
+    data class FinalizedSession(
+        val sessionId: Long,
+        val pageTurnTimestampsMs: List<Long>,
+        val sessionStartMs: Long,
+        val isTts: Boolean,
+        val pauseIntervalsMs: List<Pair<Long, Long>>,
+        val progressionStart: Float,
+        val progressionEnd: Float,
+        val bookWordCount: Int
+    )
 
     private class FakeReadingRepository : ReadingRepository {
         var nextSessionId = 1L
         val startedSessions = mutableListOf<Pair<String, Boolean>>() // bookId, isTts
         val savedPositions = mutableListOf<Pair<String, String>>() // bookId, locatorJson
-        val finalizedSessions = mutableListOf<Long>()
+        val finalizedSessions = mutableListOf<FinalizedSession>()
 
         override fun observeLatestPosition(bookId: String): Flow<ReadingPositionEntity?> = emptyFlow()
 
@@ -238,11 +391,17 @@ class ReadingSessionTrackerTest {
             pageTurnTimestampsMs: List<Long>,
             sessionStartMs: Long,
             isTts: Boolean,
+            pauseIntervalsMs: List<Pair<Long, Long>>,
             progressionStart: Float,
             progressionEnd: Float,
             bookWordCount: Int
         ) {
-            finalizedSessions.add(sessionId)
+            finalizedSessions.add(
+                FinalizedSession(
+                    sessionId, pageTurnTimestampsMs, sessionStartMs,
+                    isTts, pauseIntervalsMs, progressionStart, progressionEnd, bookWordCount
+                )
+            )
         }
 
         override fun observeSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> = emptyFlow()

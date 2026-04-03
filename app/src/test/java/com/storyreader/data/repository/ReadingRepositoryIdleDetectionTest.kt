@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -15,18 +16,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Tests the idle-detection algorithm in [ReadingRepositoryImpl].
+ * Integration tests for idle detection via [ReadingRepositoryImpl.finalizeSession].
  *
- * The private [ReadingRepositoryImpl.calcAdjustedDuration] method is exercised
- * indirectly via [ReadingRepositoryImpl.finalizeSession], then the persisted
- * [durationSeconds] is verified in the database.
- *
- * Key rules under test:
- *  - Page intervals < 5 s are excluded (rapid skipping).
- *  - Intervals > 3× average are excluded (idle detection).
- *  - TTS sessions bypass idle detection and use raw elapsed time.
- *  - Words are calculated from book progression when a word count is available.
- *  - Words fall back to a 200 WPM estimate when no book word count is present.
+ * These tests verify the full flow: start session → finalize → read persisted entity.
+ * For direct algorithm tests (no DB), see [IdleDetectionAlgorithmTest].
  */
 @RunWith(RobolectricTestRunner::class)
 class ReadingRepositoryIdleDetectionTest {
@@ -55,10 +48,9 @@ class ReadingRepositoryIdleDetectionTest {
 
     @Test
     fun `rapid page turns below minimum interval are excluded`() = runTest {
-        // All 10 page turns happen 1 second apart (< 5 s threshold).
-        // The trailing interval from the last turn to now (~60 s) is also an
-        // outlier relative to the tiny 1 s intervals, so everything is excluded.
-        val startMs = System.currentTimeMillis() - 60_000L
+        // All 10 page turns 1 s apart (< 5 s threshold), session ends immediately
+        // after the last turn so the trailing interval is also < 5 s.
+        val startMs = System.currentTimeMillis() - 11_500L
         val timestamps = (1..10).map { startMs + it * 1_000L }
 
         val sessionId = repository.startSession("book1")
@@ -70,10 +62,11 @@ class ReadingRepositoryIdleDetectionTest {
     }
 
     @Test
-    fun `long idle pause is excluded as outlier leaving normal reading time`() = runTest {
-        // Layout: 5 pages at 10 s each → 1-hour idle → 5 more pages at 10 s each.
-        // Total real reading time ≈ 11 × 10 s = 110 s.
-        // The 3 600 s idle interval is > 3× average, so it is excluded.
+    fun `long idle pause is replaced with median leaving realistic reading time`() = runTest {
+        // Layout: 5 pages at 10s each → 1-hour idle → 5 more pages at 10s each.
+        // 11 intervals of 10s + one of 3600s.
+        // Median = 10s, threshold = 30s → 3600s replaced with 10s.
+        // Total: 12 × 10s = 120s.
         val startMs = System.currentTimeMillis() - 3_800_000L
         val normalPages = (1..5).map { startMs + it * 10_000L }
         val idlePage = normalPages.last() + 3_600_000L
@@ -85,14 +78,11 @@ class ReadingRepositoryIdleDetectionTest {
 
         val session = db.readingSessionDao().getById(sessionId)
         assertNotNull(session)
-        // Without idle the adjusted duration should be ~110 s – far less than
-        // the raw elapsed time of ~63 minutes.
-        // 10 page intervals × 10 s = 100 s, plus the trailing interval from the
-        // last page turn to now (~100 s). Total: ~200 s — far less than the 3 800 s raw
-        // elapsed time and definitely excludes the 3 600 s idle.
+        // With median replacement: ~12 intervals × 10s = ~120s
+        // The trailing interval (last turn → now) varies, but the idle is gone.
         assertTrue(
-            "Expected ~200 s (idle excluded), got ${session!!.durationSeconds}",
-            session.durationSeconds in 150..260
+            "Expected ~120-200s (idle replaced), got ${session!!.durationSeconds}",
+            session.durationSeconds in 100..250
         )
     }
 
@@ -116,8 +106,6 @@ class ReadingRepositoryIdleDetectionTest {
 
     @Test
     fun `session with no page turns counts start to end as one interval`() = runTest {
-        // A single interval of ~5 minutes that passes both MIN_PAGE_INTERVAL and
-        // the outlier threshold (it cannot exceed 3× itself).
         val startMs = System.currentTimeMillis() - 300_000L
 
         val sessionId = repository.startSession("book1")
@@ -166,7 +154,6 @@ class ReadingRepositoryIdleDetectionTest {
 
         val session = db.readingSessionDao().getById(sessionId)
         assertNotNull(session)
-        // Fallback: (adjustedDuration / 60) × 200 WPM — must be positive.
         assertTrue(
             "Expected WPM-based word count > 0, got ${session?.wordsRead}",
             (session?.wordsRead ?: 0) > 0
@@ -189,14 +176,14 @@ class ReadingRepositoryIdleDetectionTest {
 
         val session = db.readingSessionDao().getById(sessionId)
         assertNotNull(session)
-        // Negative progression delta → fall back to WPM estimate, not negative words.
         assertTrue("Words read must not be negative", (session?.wordsRead ?: -1) >= 0)
     }
 
     @Test
     fun `rawDurationSeconds reflects wall-clock time regardless of idle detection`() = runTest {
+        // 5 rapid turns (500 ms apart) with a long trailing interval.
+        // rawDuration = full wall-clock; adjusted counts only the trailing interval.
         val startMs = System.currentTimeMillis() - 120_000L
-        // All rapid turns so adjusted duration → 0, but raw should still be ~120 s.
         val timestamps = (1..5).map { startMs + it * 500L }
 
         val sessionId = repository.startSession("book1")
@@ -208,7 +195,11 @@ class ReadingRepositoryIdleDetectionTest {
             "rawDurationSeconds should be ~120 s, got ${session!!.rawDurationSeconds}",
             session.rawDurationSeconds in 115..130
         )
-        assertEquals(0, session.durationSeconds)
+        // Trailing interval (~117 s) is the only valid interval
+        assertTrue(
+            "durationSeconds should capture trailing interval (~117 s), got ${session.durationSeconds}",
+            session.durationSeconds in 110..125
+        )
     }
 
     @Test
@@ -221,5 +212,16 @@ class ReadingRepositoryIdleDetectionTest {
 
         val session = db.readingSessionDao().getById(sessionId)
         assertEquals(7, session?.pagesTurned)
+    }
+
+    @Test
+    fun `trivial session with no page turns and short duration is discarded`() = runTest {
+        val startMs = System.currentTimeMillis() - 10_000L // 10 seconds
+
+        val sessionId = repository.startSession("book1")
+        repository.finalizeSession(sessionId, emptyList(), startMs)
+
+        val session = db.readingSessionDao().getById(sessionId)
+        assertNull("Trivial session should be deleted", session)
     }
 }
