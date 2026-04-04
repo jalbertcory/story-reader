@@ -121,10 +121,12 @@ class RemoteBookRecoveryManager(
         val credentials = opdsCredentialsManager.currentCredentials()
             ?: throw IllegalStateException("OPDS credentials are not configured for recovery")
         val resolvedUrl = if (sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")) {
-            sourceUrl
+            BookSyncMetadata.normalizeRemoteUrl(sourceUrl)
         } else {
-            credentials.baseUrl.trimEnd('/') + "/" + sourceUrl.trimStart('/')
-        }
+            BookSyncMetadata.normalizeRemoteUrl(
+                credentials.baseUrl.trimEnd('/') + "/" + sourceUrl.trimStart('/')
+            )
+        } ?: throw IllegalStateException("Recovery source URL could not be normalized")
         val request = Request.Builder()
             .url(resolvedUrl)
             .get()
@@ -151,8 +153,10 @@ class RemoteBookRecoveryManager(
             ?: throw IllegalStateException("Nextcloud username is not configured")
         val password = syncCredentialsManager.appPassword
             ?: throw IllegalStateException("Nextcloud app password is not configured")
+        val normalizedUrl = BookSyncMetadata.normalizeRemoteUrl(sourceUrl)
+            ?: throw IllegalStateException("Nextcloud source URL could not be normalized")
         val request = Request.Builder()
-            .url(sourceUrl)
+            .url(normalizedUrl)
             .header("Authorization", Credentials.basic(username, password))
             .get()
             .build()

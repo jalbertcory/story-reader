@@ -137,6 +137,26 @@ class SyncPayloadStoreTest {
     }
 
     @Test
+    fun `buildLatestJson infers story manager recovery metadata for older web books`() = runTest {
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "legacy-web-book",
+                title = "Web Book",
+                author = "Author",
+                sourceType = "web",
+                serverBookId = 42
+            )
+        )
+
+        val json = store.buildLatestJson()
+        val source = json.getJSONArray("books").getJSONObject(0).getJSONObject("source")
+
+        assertEquals(SyncSourceKinds.STORY_MANAGER, source.getString("kind"))
+        assertEquals("/reader/books/42/download", source.getString("url"))
+        assertEquals(42, source.getInt("serverBookId"))
+    }
+
+    @Test
     fun `mergeRemoteData matches local book by syncId and imports newer resume data`() = runTest {
         val syncId = BookSyncMetadata.syncIdFor("Shared Book", "Shared Author")
         db.bookDao().insert(

@@ -38,6 +38,15 @@ object BookSyncMetadata {
             .takeIf { it.isNotBlank() }
     }
 
+    fun normalizeRemoteUrl(rawValue: String?): String? =
+        rawValue?.let {
+            if (it.startsWith("http://")) {
+                "https://${it.removePrefix("http://")}"
+            } else {
+                it
+            }
+        }
+
     private fun normalize(value: String): String =
         value.trim().lowercase(Locale.US).replace(Regex("\\s+"), " ")
 

@@ -67,7 +67,7 @@ class StoryManagerRepository(
             coverUri = coverUri ?: existing?.coverUri,
             syncId = existing?.syncId ?: BookSyncMetadata.syncIdFor(serverBook.title, serverBook.author),
             syncSourceKind = SyncSourceKinds.STORY_MANAGER,
-            syncSourceUrl = serverBook.downloadUrl,
+            syncSourceUrl = BookSyncMetadata.normalizeRemoteUrl(serverBook.downloadUrl),
             originalFileName = file.name,
             totalProgression = existing?.totalProgression ?: 0f,
             wordCount = existing?.wordCount ?: wordCount,

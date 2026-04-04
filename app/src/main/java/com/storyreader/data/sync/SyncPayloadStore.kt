@@ -207,6 +207,16 @@ class SyncPayloadStore(
         latestPosition: ReadingPositionEntity?,
         sessions: List<ReadingSessionEntity>
     ): SyncBookPayload {
+        val inferredSourceKind = when {
+            book.syncSourceKind != null -> book.syncSourceKind
+            book.sourceType == "web" && book.serverBookId != null -> SyncSourceKinds.STORY_MANAGER
+            else -> null
+        }
+        val inferredSourceUrl = when {
+            book.syncSourceUrl != null -> BookSyncMetadata.normalizeRemoteUrl(book.syncSourceUrl)
+            book.sourceType == "web" && book.serverBookId != null -> "/reader/books/${book.serverBookId}/download"
+            else -> null
+        }
         val latestPayload = latestPosition?.let {
             LatestPositionPayload(locatorJson = it.locatorJson, timestamp = it.timestamp)
         }
@@ -222,8 +232,8 @@ class SyncPayloadStore(
             author = book.author,
             series = book.series,
             seriesIndex = book.seriesIndex,
-            sourceKind = book.syncSourceKind,
-            sourceUrl = book.syncSourceUrl,
+            sourceKind = inferredSourceKind,
+            sourceUrl = inferredSourceUrl,
             serverBookId = book.serverBookId,
             originalFileName = book.originalFileName,
             latestPosition = latestPayload,
