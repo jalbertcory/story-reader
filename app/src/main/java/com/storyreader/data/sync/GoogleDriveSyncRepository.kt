@@ -18,6 +18,14 @@ class GoogleDriveSyncRepository(
         if (remoteFile != null) {
             val remoteJson = googleDriveApi.downloadSyncJson(accessToken, remoteFile.id).getOrThrow()
             payloadStore.mergeRemoteData(remoteJson)
+            val mergedJson = payloadStore.buildLatestJson(remoteJson)
+            googleDriveApi.uploadSyncJson(
+                accessToken = accessToken,
+                fileId = remoteFile.id,
+                fileName = SYNC_FILE_NAME,
+                payload = mergedJson
+            ).getOrThrow()
+            return@runCatching
         }
 
         val mergedJson = payloadStore.buildLatestJson()

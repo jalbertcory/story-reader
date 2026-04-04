@@ -156,7 +156,7 @@ class WebDavSyncRepository(
                 payloadStore.mergeRemoteData(remoteJson)
             }
 
-            val json = payloadStore.buildLatestJson()
+            val json = payloadStore.buildLatestJson(remoteJson)
             uploadJson(json)
 
             Result.success(Unit)

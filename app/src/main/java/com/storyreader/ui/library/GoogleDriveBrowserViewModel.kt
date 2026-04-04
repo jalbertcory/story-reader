@@ -6,8 +6,10 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
+import com.storyreader.data.sync.BookImportMetadata
 import com.storyreader.data.sync.GoogleDriveAuthorizationOutcome
 import com.storyreader.data.sync.GoogleDriveItem
+import com.storyreader.data.sync.SyncSourceKinds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -145,7 +147,14 @@ class GoogleDriveBrowserViewModel(application: Application) : AndroidViewModel(a
         val destination = File(booksDir, item.name)
         googleDriveApi.downloadFile(accessToken, item.id, destination)
             .onSuccess {
-                bookRepository.importFromUri(android.net.Uri.fromFile(destination))
+                bookRepository.importFromUri(
+                    android.net.Uri.fromFile(destination),
+                    BookImportMetadata(
+                        sourceKind = SyncSourceKinds.GOOGLE_DRIVE,
+                        sourceUrl = "gdrive://${item.id}",
+                        originalFileName = item.name
+                    )
+                )
             }
             .onFailure { error ->
                 _uiState.value = _uiState.value.copy(

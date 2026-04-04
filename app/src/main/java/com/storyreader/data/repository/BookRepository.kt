@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import android.net.Uri
 import com.storyreader.data.db.dao.BookDao
 import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.sync.BookImportMetadata
+import com.storyreader.data.sync.BookSyncMetadata
+import com.storyreader.data.sync.SyncSourceKinds
 import com.storyreader.reader.epub.EpubRepository
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +26,7 @@ interface BookRepository {
     suspend fun hideBook(bookId: String)
     suspend fun unhideBook(bookId: String)
     suspend fun updateProgression(bookId: String, progression: Float)
-    suspend fun importFromUri(uri: Uri): Result<BookEntity>
+    suspend fun importFromUri(uri: Uri, importMetadata: BookImportMetadata? = null): Result<BookEntity>
     suspend fun getWordCount(bookId: String): Int
     suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?)
 }
@@ -57,16 +60,41 @@ class BookRepositoryImpl(
     override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) =
         bookDao.updateChapterPosition(bookId, title, progression)
 
-    override suspend fun importFromUri(uri: Uri): Result<BookEntity> {
+    override suspend fun importFromUri(uri: Uri, importMetadata: BookImportMetadata?): Result<BookEntity> {
         return epubRepository.openPublication(uri).map { publication ->
+            val existing = bookDao.getByIdOnce(uri.toString())
             val coverUri = saveCover(publication.cover())
             val wordCount = countPublicationWords(publication)
+            val title = publication.metadata.title ?: "Untitled"
+            val author = publication.metadata.authors.joinToString { it.name }
+            val syncId = existing?.syncId ?: BookSyncMetadata.syncIdFor(title, author)
+            val sourceKind = importMetadata?.sourceKind
+                ?: if (uri.scheme == "content" || uri.scheme == "file") SyncSourceKinds.DEVICE else null
+            val sourceUrl = importMetadata?.sourceUrl ?: uri.toString()
+            val originalFileName = importMetadata?.originalFileName
+                ?: BookSyncMetadata.extractOriginalFileName(uri.toString())
             BookEntity(
                 bookId = uri.toString(),
-                title = publication.metadata.title ?: "Untitled",
-                author = publication.metadata.authors.joinToString { it.name },
-                coverUri = coverUri,
-                wordCount = wordCount
+                title = title,
+                author = author,
+                coverUri = coverUri ?: existing?.coverUri,
+                syncId = syncId,
+                syncSourceKind = sourceKind ?: existing?.syncSourceKind,
+                syncSourceUrl = sourceUrl.ifBlank { existing?.syncSourceUrl.orEmpty() }.ifBlank { null },
+                originalFileName = originalFileName ?: existing?.originalFileName,
+                totalProgression = existing?.totalProgression ?: 0f,
+                wordCount = existing?.wordCount ?: wordCount,
+                hidden = existing?.hidden ?: false,
+                series = existing?.series,
+                sourceType = existing?.sourceType,
+                serverBookId = existing?.serverBookId,
+                contentVersion = existing?.contentVersion,
+                contentUpdatedAt = existing?.contentUpdatedAt,
+                serverWordCount = existing?.serverWordCount,
+                lastSyncedAt = existing?.lastSyncedAt,
+                lastChapterTitle = existing?.lastChapterTitle,
+                lastChapterProgression = existing?.lastChapterProgression,
+                seriesIndex = existing?.seriesIndex
             ).also { bookDao.insert(it) }
         }
     }

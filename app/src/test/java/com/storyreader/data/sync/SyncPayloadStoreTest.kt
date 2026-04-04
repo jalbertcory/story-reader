@@ -7,10 +7,12 @@ import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.db.entity.ReadingPositionEntity
 import com.storyreader.data.db.entity.ReadingSessionEntity
 import kotlinx.coroutines.test.runTest
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -40,255 +42,337 @@ class SyncPayloadStoreTest {
     @After
     fun tearDown() = db.close()
 
-    private suspend fun insertBook(bookId: String) {
-        db.bookDao().insert(BookEntity(bookId = bookId, title = "Test Book", author = "Author"))
-    }
-
-    // ── buildLatestJson ──────────────────────────────────────────────────────
-
     @Test
-    fun `buildLatestJson returns empty arrays when no data`() = runTest {
-        val json = store.buildLatestJson()
-        assertEquals(0, json.getJSONArray("positions").length())
-        assertEquals(0, json.getJSONArray("sessions").length())
-    }
-
-    @Test
-    fun `buildLatestJson includes only latest position per book`() = runTest {
-        insertBook("book1")
-        db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book1", locatorJson = "{\"page\":1}", timestamp = 1000L)
+    fun `buildLatestJson groups book metadata progress and sessions`() = runTest {
+        val syncId = "sync-book-1"
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "local-book-1",
+                title = "Test Book",
+                author = "Author",
+                syncId = syncId,
+                syncSourceKind = SyncSourceKinds.OPDS,
+                syncSourceUrl = "https://catalog.example/books/1.epub",
+                originalFileName = "test-book.epub",
+                totalProgression = 0.55f,
+                series = "Series A",
+                seriesIndex = 2f
+            )
         )
         db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book1", locatorJson = "{\"page\":5}", timestamp = 2000L)
+            ReadingPositionEntity(
+                bookId = "local-book-1",
+                locatorJson = """{"locations":{"totalProgression":0.6}}""",
+                timestamp = 5_000L
+            )
         )
-
-        val json = store.buildLatestJson()
-        val positions = json.getJSONArray("positions")
-        assertEquals(1, positions.length())
-        assertEquals("book1", positions.getJSONObject(0).getString("bookId"))
-        assertEquals("{\"page\":5}", positions.getJSONObject(0).getString("locatorJson"))
-    }
-
-    @Test
-    fun `buildLatestJson includes latest position for each book independently`() = runTest {
-        insertBook("book1")
-        insertBook("book2")
-        db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book1", locatorJson = "{\"page\":3}", timestamp = 1000L)
-        )
-        db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book2", locatorJson = "{\"page\":7}", timestamp = 1500L)
-        )
-
-        val json = store.buildLatestJson()
-        val positions = json.getJSONArray("positions")
-        assertEquals(2, positions.length())
-    }
-
-    @Test
-    fun `buildLatestJson serializes position fields correctly`() = runTest {
-        insertBook("book1")
-        db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book1", locatorJson = "{\"href\":\"ch1.html\"}", timestamp = 9999L)
-        )
-
-        val json = store.buildLatestJson()
-        val position = json.getJSONArray("positions").getJSONObject(0)
-        assertEquals("book1", position.getString("bookId"))
-        assertEquals("{\"href\":\"ch1.html\"}", position.getString("locatorJson"))
-        assertEquals(9999L, position.getLong("timestamp"))
-    }
-
-    @Test
-    fun `buildLatestJson includes all sessions`() = runTest {
-        insertBook("book1")
-        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "book1", startTime = 1000L, durationSeconds = 100))
-        db.readingSessionDao().insert(ReadingSessionEntity(bookId = "book1", startTime = 2000L, durationSeconds = 200))
-
-        val json = store.buildLatestJson()
-        assertEquals(2, json.getJSONArray("sessions").length())
-    }
-
-    @Test
-    fun `buildLatestJson serializes session fields correctly`() = runTest {
-        insertBook("book1")
-        db.readingSessionDao().insert(ReadingSessionEntity(
-            bookId = "book1",
-            startTime = 5000L,
-            durationSeconds = 300,
-            rawDurationSeconds = 360,
-            pagesTurned = 15,
-            wordsRead = 1000,
-            isTts = true
-        ))
-
-        val json = store.buildLatestJson()
-        val session = json.getJSONArray("sessions").getJSONObject(0)
-        assertEquals("book1", session.getString("bookId"))
-        assertEquals(5000L, session.getLong("startTime"))
-        assertEquals(300, session.getInt("durationSeconds"))
-        assertEquals(360, session.getInt("rawDurationSeconds"))
-        assertEquals(15, session.getInt("pagesTurned"))
-        assertEquals(1000, session.getInt("wordsRead"))
-        assertTrue(session.getBoolean("isTts"))
-    }
-
-    // ── mergeRemoteData – positions ──────────────────────────────────────────
-
-    @Test
-    fun `mergeRemoteData imports newer remote position`() = runTest {
-        insertBook("book1")
-        db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book1", locatorJson = "{\"page\":1}", timestamp = 1000L)
-        )
-
-        val remoteJson = buildRemoteJson(
-            positions = """[{"bookId":"book1","locatorJson":"{\"page\":10}","timestamp":5000}]""",
-            sessions = "[]"
-        )
-
-        store.mergeRemoteData(remoteJson)
-
-        val latest = db.readingPositionDao().getLatestPositionOnce("book1")
-        assertEquals("{\"page\":10}", latest?.locatorJson)
-        assertEquals(5000L, latest?.timestamp)
-    }
-
-    @Test
-    fun `mergeRemoteData does not overwrite newer local position with older remote`() = runTest {
-        insertBook("book1")
-        db.readingPositionDao().insertPosition(
-            ReadingPositionEntity(bookId = "book1", locatorJson = "{\"page\":20}", timestamp = 9000L)
-        )
-
-        val remoteJson = buildRemoteJson(
-            positions = """[{"bookId":"book1","locatorJson":"{\"page\":5}","timestamp":1000}]""",
-            sessions = "[]"
-        )
-
-        store.mergeRemoteData(remoteJson)
-
-        val latest = db.readingPositionDao().getLatestPositionOnce("book1")
-        assertEquals("{\"page\":20}", latest?.locatorJson)
-        assertEquals(9000L, latest?.timestamp)
-    }
-
-    @Test
-    fun `mergeRemoteData skips position for unknown book`() = runTest {
-        val remoteJson = buildRemoteJson(
-            positions = """[{"bookId":"ghost-book","locatorJson":"{}","timestamp":5000}]""",
-            sessions = "[]"
-        )
-
-        store.mergeRemoteData(remoteJson)
-
-        val positions = db.readingPositionDao().getLatestPositionPerBook()
-        assertEquals(0, positions.size)
-    }
-
-    @Test
-    fun `mergeRemoteData imports position when no local position exists`() = runTest {
-        insertBook("book1")
-
-        val remoteJson = buildRemoteJson(
-            positions = """[{"bookId":"book1","locatorJson":"{\"page\":3}","timestamp":3000}]""",
-            sessions = "[]"
-        )
-
-        store.mergeRemoteData(remoteJson)
-
-        val latest = db.readingPositionDao().getLatestPositionOnce("book1")
-        assertNotNull(latest)
-        assertEquals("{\"page\":3}", latest?.locatorJson)
-    }
-
-    // ── mergeRemoteData – sessions ───────────────────────────────────────────
-
-    @Test
-    fun `mergeRemoteData imports new remote session`() = runTest {
-        insertBook("book1")
-
-        val remoteJson = buildRemoteJson(
-            positions = "[]",
-            sessions = """[{"bookId":"book1","startTime":3000,"durationSeconds":120,"rawDurationSeconds":150,"pagesTurned":5,"wordsRead":400,"isTts":false}]"""
-        )
-
-        store.mergeRemoteData(remoteJson)
-
-        val session = db.readingSessionDao().findByBookIdAndStartTime("book1", 3000L)
-        assertNotNull(session)
-        assertEquals(120, session?.durationSeconds)
-        assertEquals(5, session?.pagesTurned)
-        assertEquals(400, session?.wordsRead)
-    }
-
-    @Test
-    fun `mergeRemoteData skips duplicate remote session same bookId and startTime`() = runTest {
-        insertBook("book1")
         db.readingSessionDao().insert(
-            ReadingSessionEntity(bookId = "book1", startTime = 3000L, durationSeconds = 60)
+            ReadingSessionEntity(
+                bookId = "local-book-1",
+                startTime = 9_000L,
+                durationSeconds = 120,
+                rawDurationSeconds = 130,
+                pagesTurned = 7,
+                wordsRead = 900,
+                isTts = false
+            )
         )
 
-        val remoteJson = buildRemoteJson(
-            positions = "[]",
-            sessions = """[{"bookId":"book1","startTime":3000,"durationSeconds":999,"rawDurationSeconds":0,"pagesTurned":0,"wordsRead":0,"isTts":false}]"""
-        )
+        val json = store.buildLatestJson()
 
-        store.mergeRemoteData(remoteJson)
+        assertEquals(2, json.getInt("schemaVersion"))
+        val books = json.getJSONArray("books")
+        assertEquals(1, books.length())
 
-        val session = db.readingSessionDao().findByBookIdAndStartTime("book1", 3000L)
-        assertEquals("Local session should not be overwritten", 60, session?.durationSeconds)
+        val book = books.getJSONObject(0)
+        assertEquals(syncId, book.getString("syncId"))
+        assertEquals("Test Book", book.getString("title"))
+        assertEquals("Author", book.getString("author"))
+        assertEquals("Series A", book.getString("series"))
+        assertEquals(2.0, book.getDouble("seriesIndex"), 0.001)
+
+        val source = book.getJSONObject("source")
+        assertEquals(SyncSourceKinds.OPDS, source.getString("kind"))
+        assertEquals("https://catalog.example/books/1.epub", source.getString("url"))
+        assertEquals("test-book.epub", source.getString("originalFileName"))
+
+        val progress = book.getJSONObject("progress")
+        assertEquals(0.6, progress.getDouble("furthestProgress"), 0.001)
+        assertEquals(false, progress.getBoolean("isCompleted"))
+        assertEquals(5_000L, progress.getJSONObject("latestPosition").getLong("timestamp"))
+
+        val sessions = book.getJSONArray("sessions")
+        assertEquals(1, sessions.length())
+        assertEquals(9_000L, sessions.getJSONObject(0).getLong("startTime"))
     }
 
     @Test
-    fun `mergeRemoteData skips session for unknown book`() = runTest {
-        val remoteJson = buildRemoteJson(
-            positions = "[]",
-            sessions = """[{"bookId":"ghost-book","startTime":1000,"durationSeconds":100,"rawDurationSeconds":0,"pagesTurned":0,"wordsRead":0,"isTts":false}]"""
+    fun `buildLatestJson computes syncId for older books missing one`() = runTest {
+        db.bookDao().insert(
+            BookEntity(bookId = "legacy-book", title = "Dune", author = "Frank Herbert")
         )
 
-        store.mergeRemoteData(remoteJson)
+        val json = store.buildLatestJson()
+        val syncId = json.getJSONArray("books").getJSONObject(0).getString("syncId")
 
-        assertEquals(0, db.readingSessionDao().getAllSessionsOnce().size)
+        assertEquals(BookSyncMetadata.syncIdFor("Dune", "Frank Herbert"), syncId)
+        val persisted = db.bookDao().getByIdOnce("legacy-book")
+        assertEquals(syncId, persisted?.syncId)
     }
 
     @Test
-    fun `mergeRemoteData handles missing optional session fields with defaults`() = runTest {
-        insertBook("book1")
-
-        val remoteJson = buildRemoteJson(
-            positions = "[]",
-            sessions = """[{"bookId":"book1","startTime":7000}]"""
+    fun `buildLatestJson excludes sessions shorter than 10 seconds`() = runTest {
+        db.bookDao().insert(BookEntity(bookId = "book1", title = "Book", author = "Author"))
+        db.readingSessionDao().insert(
+            ReadingSessionEntity(bookId = "book1", startTime = 1_000L, durationSeconds = 5)
+        )
+        db.readingSessionDao().insert(
+            ReadingSessionEntity(bookId = "book1", startTime = 2_000L, durationSeconds = 60)
         )
 
-        store.mergeRemoteData(remoteJson)
+        val json = store.buildLatestJson()
+        val sessions = json.getJSONArray("books").getJSONObject(0).getJSONArray("sessions")
 
-        val session = db.readingSessionDao().findByBookIdAndStartTime("book1", 7000L)
+        assertEquals(1, sessions.length())
+        assertEquals(2_000L, sessions.getJSONObject(0).getLong("startTime"))
+    }
+
+    @Test
+    fun `mergeRemoteData matches local book by syncId and imports newer resume data`() = runTest {
+        val syncId = BookSyncMetadata.syncIdFor("Shared Book", "Shared Author")
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "device-a-file",
+                title = "Shared Book",
+                author = "Shared Author",
+                syncId = syncId,
+                totalProgression = 0.2f
+            )
+        )
+
+        store.mergeRemoteData(
+            remoteJson(
+                remoteBookJson(
+                    syncId = syncId,
+                    title = "Shared Book",
+                    author = "Shared Author",
+                    furthestProgress = 0.75f,
+                    latestPositionTimestamp = 10_000L,
+                    latestLocatorJson = """{"locations":{"totalProgression":0.4}}""",
+                    sessions = listOf(
+                        remoteSessionJson(
+                            id = BookSyncMetadata.sessionIdFor(syncId, 12_000L, false),
+                            startTime = 12_000L,
+                            durationSeconds = 90
+                        )
+                    )
+                )
+            )
+        )
+
+        val latestPosition = db.readingPositionDao().getLatestPositionOnce("device-a-file")
+        val session = db.readingSessionDao().findByBookIdAndStartTime("device-a-file", 12_000L)
+        val updatedBook = db.bookDao().getByIdOnce("device-a-file")
+
+        assertNotNull(latestPosition)
+        assertEquals(10_000L, latestPosition?.timestamp)
         assertNotNull(session)
-        assertEquals(0, session?.durationSeconds)
-        assertEquals(0, session?.wordsRead)
+        assertEquals(90, session?.durationSeconds)
+        assertEquals(0.75f, updatedBook?.totalProgression ?: 0f, 0.001f)
     }
 
     @Test
-    fun `mergeRemoteData processes both positions and sessions in one call`() = runTest {
-        insertBook("book1")
-
-        val remoteJson = buildRemoteJson(
-            positions = """[{"bookId":"book1","locatorJson":"{\"page\":9}","timestamp":8000}]""",
-            sessions = """[{"bookId":"book1","startTime":9000,"durationSeconds":60,"rawDurationSeconds":60,"pagesTurned":2,"wordsRead":100,"isTts":false}]"""
+    fun `mergeRemoteData preserves complete progress separately from latest locator`() = runTest {
+        val syncId = BookSyncMetadata.syncIdFor("Marked Complete", "Author")
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "local-complete",
+                title = "Marked Complete",
+                author = "Author",
+                syncId = syncId,
+                totalProgression = 0.6f
+            )
         )
 
-        store.mergeRemoteData(remoteJson)
+        store.mergeRemoteData(
+            remoteJson(
+                remoteBookJson(
+                    syncId = syncId,
+                    title = "Marked Complete",
+                    author = "Author",
+                    furthestProgress = 1.0f,
+                    isCompleted = true,
+                    latestPositionTimestamp = 8_000L,
+                    latestLocatorJson = """{"locations":{"totalProgression":0.62}}"""
+                )
+            )
+        )
 
-        val position = db.readingPositionDao().getLatestPositionOnce("book1")
-        assertNotNull(position)
-        assertEquals("{\"page\":9}", position?.locatorJson)
+        val latestPosition = db.readingPositionDao().getLatestPositionOnce("local-complete")
+        val updatedBook = db.bookDao().getByIdOnce("local-complete")
 
-        val session = db.readingSessionDao().findByBookIdAndStartTime("book1", 9000L)
-        assertNotNull(session)
+        assertEquals(8_000L, latestPosition?.timestamp)
+        assertEquals(1f, updatedBook?.totalProgression ?: 0f, 0.001f)
     }
 
-    private fun buildRemoteJson(positions: String, sessions: String): JSONObject =
-        JSONObject("""{"positions":$positions,"sessions":$sessions}""")
+    @Test
+    fun `mergeRemoteData skips remote-only books instead of creating stubs`() = runTest {
+        store.mergeRemoteData(
+            remoteJson(
+                remoteBookJson(
+                    syncId = "missing-book",
+                    title = "Ghost",
+                    author = "Writer",
+                    furthestProgress = 0.4f
+                )
+            )
+        )
+
+        assertTrue(db.bookDao().getAllIncludingHiddenOnce().isEmpty())
+        assertTrue(db.readingPositionDao().getLatestPositionPerBook().isEmpty())
+        assertTrue(db.readingSessionDao().getAllSessionsOnce().isEmpty())
+    }
+
+    @Test
+    fun `buildLatestJson preserves remote-only books while uploading merged payload`() = runTest {
+        val localSyncId = BookSyncMetadata.syncIdFor("Local", "Author")
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "local-book",
+                title = "Local",
+                author = "Author",
+                syncId = localSyncId
+            )
+        )
+
+        val merged = store.buildLatestJson(
+            remoteJson(
+                remoteBookJson(
+                    syncId = "remote-only",
+                    title = "Remote Only",
+                    author = "Elsewhere",
+                    furthestProgress = 0.9f,
+                    sourceKind = SyncSourceKinds.NEXTCLOUD,
+                    sourceUrl = "https://nextcloud.example/remote-only.epub",
+                    originalFileName = "remote-only.epub"
+                )
+            )
+        )
+
+        val books = merged.getJSONArray("books")
+        val syncIds = (0 until books.length()).map { books.getJSONObject(it).getString("syncId") }.toSet()
+
+        assertEquals(setOf(localSyncId, "remote-only"), syncIds)
+    }
+
+    @Test
+    fun `mergeRemoteData backfills source metadata and series on matching local book`() = runTest {
+        val syncId = BookSyncMetadata.syncIdFor("Metadata Book", "Author")
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "metadata-book",
+                title = "Metadata Book",
+                author = "Author",
+                syncId = syncId
+            )
+        )
+
+        store.mergeRemoteData(
+            remoteJson(
+                remoteBookJson(
+                    syncId = syncId,
+                    title = "Metadata Book",
+                    author = "Author",
+                    furthestProgress = 0.2f,
+                    sourceKind = SyncSourceKinds.OPDS,
+                    sourceUrl = "https://catalog.example/metadata-book.epub",
+                    originalFileName = "metadata-book.epub",
+                    series = "Recovered Series",
+                    seriesIndex = 4f,
+                    serverBookId = 77
+                )
+            )
+        )
+
+        val updated = db.bookDao().getByIdOnce("metadata-book")
+        assertEquals(SyncSourceKinds.OPDS, updated?.syncSourceKind)
+        assertEquals("https://catalog.example/metadata-book.epub", updated?.syncSourceUrl)
+        assertEquals("metadata-book.epub", updated?.originalFileName)
+        assertEquals("Recovered Series", updated?.series)
+        assertEquals(4f, updated?.seriesIndex ?: 0f, 0.001f)
+        assertEquals(77, updated?.serverBookId)
+    }
+
+    private fun remoteJson(vararg books: JSONObject): JSONObject =
+        JSONObject().apply {
+            put("schemaVersion", 2)
+            put("books", JSONArray().apply { books.forEach { put(it) } })
+        }
+
+    private fun remoteBookJson(
+        syncId: String,
+        title: String,
+        author: String,
+        furthestProgress: Float,
+        isCompleted: Boolean = false,
+        latestPositionTimestamp: Long? = null,
+        latestLocatorJson: String? = null,
+        sourceKind: String? = null,
+        sourceUrl: String? = null,
+        originalFileName: String? = null,
+        series: String? = null,
+        seriesIndex: Float? = null,
+        serverBookId: Int? = null,
+        sessions: List<JSONObject> = emptyList()
+    ): JSONObject = JSONObject().apply {
+        put("syncId", syncId)
+        put("title", title)
+        put("author", author)
+        if (series != null) put("series", series)
+        if (seriesIndex != null) put("seriesIndex", seriesIndex.toDouble())
+        put(
+            "source",
+            JSONObject().apply {
+                if (sourceKind != null) put("kind", sourceKind)
+                if (sourceUrl != null) put("url", sourceUrl)
+                if (serverBookId != null) put("serverBookId", serverBookId)
+                if (originalFileName != null) put("originalFileName", originalFileName)
+            }
+        )
+        put(
+            "progress",
+            JSONObject().apply {
+                put("furthestProgress", furthestProgress.toDouble())
+                put("isCompleted", isCompleted)
+                if (latestPositionTimestamp != null && latestLocatorJson != null) {
+                    put(
+                        "latestPosition",
+                        JSONObject().apply {
+                            put("timestamp", latestPositionTimestamp)
+                            put("locatorJson", latestLocatorJson)
+                        }
+                    )
+                }
+            }
+        )
+        put("sessions", JSONArray().apply { sessions.forEach { put(it) } })
+    }
+
+    private fun remoteSessionJson(
+        id: String,
+        startTime: Long,
+        durationSeconds: Int,
+        rawDurationSeconds: Int = durationSeconds,
+        pagesTurned: Int = 0,
+        wordsRead: Int = 0,
+        isTts: Boolean = false
+    ): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("startTime", startTime)
+        put("durationSeconds", durationSeconds)
+        put("rawDurationSeconds", rawDurationSeconds)
+        put("pagesTurned", pagesTurned)
+        put("wordsRead", wordsRead)
+        put("isTts", isTts)
+    }
 }

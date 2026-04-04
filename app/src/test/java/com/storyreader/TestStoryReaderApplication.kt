@@ -9,6 +9,7 @@ import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
 import com.storyreader.data.repository.ReadingRepositoryImpl
+import com.storyreader.data.sync.BookImportMetadata
 import com.storyreader.data.sync.SyncCredentialsManager
 import com.storyreader.data.sync.SyncManager
 import com.storyreader.data.sync.SyncSettingsStore
@@ -78,7 +79,7 @@ private class TestBookRepository(
     override suspend fun unhideBook(bookId: String) = dao.setHidden(bookId, false)
     override suspend fun updateProgression(bookId: String, progression: Float) =
         dao.updateProgression(bookId, progression)
-    override suspend fun importFromUri(uri: Uri): Result<BookEntity> =
+    override suspend fun importFromUri(uri: Uri, importMetadata: BookImportMetadata?): Result<BookEntity> =
         Result.failure(UnsupportedOperationException("not supported in tests"))
     override suspend fun getWordCount(bookId: String): Int = dao.getWordCountById(bookId) ?: 0
     override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) =

@@ -7,6 +7,8 @@ import com.storyreader.data.catalog.ServerBook
 import com.storyreader.data.catalog.StoryManagerApiClient
 import com.storyreader.data.db.dao.BookDao
 import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.sync.BookSyncMetadata
+import com.storyreader.data.sync.SyncSourceKinds
 import com.storyreader.reader.epub.EpubRepository
 import org.readium.r2.shared.publication.services.cover
 import android.util.Log
@@ -63,6 +65,10 @@ class StoryManagerRepository(
             title = serverBook.title,
             author = serverBook.author,
             coverUri = coverUri ?: existing?.coverUri,
+            syncId = existing?.syncId ?: BookSyncMetadata.syncIdFor(serverBook.title, serverBook.author),
+            syncSourceKind = SyncSourceKinds.STORY_MANAGER,
+            syncSourceUrl = serverBook.downloadUrl,
+            originalFileName = file.name,
             totalProgression = existing?.totalProgression ?: 0f,
             wordCount = existing?.wordCount ?: wordCount,
             hidden = false,
