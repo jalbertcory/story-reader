@@ -2,6 +2,9 @@ package com.storyreader.data.sync
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -210,5 +213,34 @@ class SyncManagerTest {
 
         manager = makeSyncManager(listOf(provider))
         assertTrue(manager.syncEnabledProviders().isSuccess)
+    }
+
+    @Test
+    fun `concurrent syncEnabledProviders calls share one in-flight sync`() = runTest {
+        var syncCalls = 0
+        val manager = makeSyncManager(
+            listOf(
+                object : SyncProvider {
+                    override val id = "p1"
+                    override val displayName = "Provider p1"
+                    override val isEnabled = true
+                    override val isConfigured = true
+
+                    override suspend fun sync(onProgress: (SyncProgress) -> Unit): Result<Unit> {
+                        syncCalls++
+                        delay(50)
+                        return Result.success(Unit)
+                    }
+                }
+            )
+        )
+
+        val results = awaitAll(
+            async { manager.syncEnabledProviders() },
+            async { manager.syncEnabledProviders() }
+        )
+
+        assertTrue(results.all { it.isSuccess })
+        assertEquals(1, syncCalls)
     }
 }

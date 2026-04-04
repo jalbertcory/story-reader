@@ -3,6 +3,7 @@ package com.storyreader.reader.epub
 import android.net.Uri
 import android.util.Log
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -21,6 +22,7 @@ private const val TAG = "EpubSanitizer"
  * XHTML resource needs fixing.
  */
 object EpubSanitizer {
+    private val fileLocks = ConcurrentHashMap<String, Any>()
 
     fun sanitizeIfNeeded(uri: Uri) {
         if (uri.scheme != "file") return
@@ -28,8 +30,11 @@ object EpubSanitizer {
         val file = File(path)
         if (!file.exists() || !file.name.endsWith(".epub", ignoreCase = true)) return
 
+        val lock = fileLocks.getOrPut(file.absolutePath) { Any() }
         try {
-            sanitizeEpub(file)
+            synchronized(lock) {
+                sanitizeEpub(file)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to sanitize EPUB: ${e.message}")
         }
