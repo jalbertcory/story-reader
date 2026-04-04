@@ -6,6 +6,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 data class BookImportMetadata(
+    val syncId: String? = null,
     val sourceKind: String? = null,
     val sourceUrl: String? = null,
     val originalFileName: String? = null

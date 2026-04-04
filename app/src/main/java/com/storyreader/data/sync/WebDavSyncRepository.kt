@@ -25,7 +25,8 @@ class WebDavSyncRepository(
     private val credentialsManager: SyncCredentialsManager,
     positionDao: ReadingPositionDao,
     sessionDao: ReadingSessionDao,
-    bookDao: com.storyreader.data.db.dao.BookDao? = null
+    bookDao: com.storyreader.data.db.dao.BookDao? = null,
+    private val recoveryManager: RemoteBookRecoveryManager? = null
 ) {
     private val payloadStore = SyncPayloadStore(positionDao, sessionDao, bookDao)
 
@@ -154,6 +155,16 @@ class WebDavSyncRepository(
 
             if (remoteJson != null) {
                 payloadStore.mergeRemoteData(remoteJson)
+                val recoverySummary = recoveryManager?.recoverMissingBooks(remoteJson)
+                if (recoverySummary != null) {
+                    Log.i(
+                        TAG,
+                        "Recovery summary attempted=${recoverySummary.attempted} imported=${recoverySummary.imported} failed=${recoverySummary.failed} skipped=${recoverySummary.skipped}"
+                    )
+                }
+                if ((recoverySummary?.imported ?: 0) > 0) {
+                    payloadStore.mergeRemoteData(remoteJson)
+                }
             }
 
             val json = payloadStore.buildLatestJson(remoteJson)

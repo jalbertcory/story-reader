@@ -25,6 +25,7 @@ import com.storyreader.data.sync.GoogleDriveCredentialsManager
 import com.storyreader.data.sync.GoogleDriveSyncProvider
 import com.storyreader.data.sync.GoogleDriveSyncRepository
 import com.storyreader.data.sync.NextcloudSyncProvider
+import com.storyreader.data.sync.RemoteBookRecoveryManager
 import com.storyreader.data.sync.SyncCredentialsManager
 import com.storyreader.data.sync.SyncManager
 import com.storyreader.data.sync.SyncScheduler
@@ -75,10 +76,6 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
         GoogleDriveAuthManager(this, googleDriveCredentialsManager)
     }
 
-    val webDavSyncRepository: WebDavSyncRepository by lazy {
-        WebDavSyncRepository(credentialsManager, database.readingPositionDao(), database.readingSessionDao(), database.bookDao())
-    }
-
     val googleDriveApi: GoogleDriveApi by lazy {
         GoogleDriveApi()
     }
@@ -101,6 +98,28 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
         )
     }
 
+    val remoteBookRecoveryManager: RemoteBookRecoveryManager by lazy {
+        RemoteBookRecoveryManager(
+            context = this,
+            bookDao = database.bookDao(),
+            bookRepository = bookRepository,
+            syncCredentialsManager = credentialsManager,
+            googleDriveAuthManager = googleDriveAuthManager,
+            googleDriveApi = googleDriveApi,
+            opdsCredentialsManager = opdsCredentialsManager
+        )
+    }
+
+    val webDavSyncRepository: WebDavSyncRepository by lazy {
+        WebDavSyncRepository(
+            credentialsManager = credentialsManager,
+            positionDao = database.readingPositionDao(),
+            sessionDao = database.readingSessionDao(),
+            bookDao = database.bookDao(),
+            recoveryManager = remoteBookRecoveryManager
+        )
+    }
+
     val googleDriveSyncRepository: GoogleDriveSyncRepository by lazy {
         GoogleDriveSyncRepository(
             authManager = googleDriveAuthManager,
@@ -109,7 +128,8 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
                 sessionDao = database.readingSessionDao(),
                 bookDao = database.bookDao()
             ),
-            googleDriveApi = googleDriveApi
+            googleDriveApi = googleDriveApi,
+            recoveryManager = remoteBookRecoveryManager
         )
     }
 

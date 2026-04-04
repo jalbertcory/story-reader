@@ -67,7 +67,7 @@ class BookRepositoryImpl(
             val wordCount = countPublicationWords(publication)
             val title = publication.metadata.title ?: "Untitled"
             val author = publication.metadata.authors.joinToString { it.name }
-            val syncId = existing?.syncId ?: BookSyncMetadata.syncIdFor(title, author)
+            val syncId = importMetadata?.syncId ?: existing?.syncId ?: BookSyncMetadata.syncIdFor(title, author)
             val sourceKind = importMetadata?.sourceKind
                 ?: if (uri.scheme == "content" || uri.scheme == "file") SyncSourceKinds.DEVICE else null
             val sourceUrl = importMetadata?.sourceUrl ?: uri.toString()
