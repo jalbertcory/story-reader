@@ -57,8 +57,7 @@ class ReadingRepositoryIdleDetectionTest {
         repository.finalizeSession(sessionId, timestamps, startMs)
 
         val session = db.readingSessionDao().getById(sessionId)
-        assertNotNull(session)
-        assertEquals(0, session!!.durationSeconds)
+        assertNull(session)
     }
 
     @Test
