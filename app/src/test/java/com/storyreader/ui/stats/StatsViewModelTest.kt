@@ -13,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -216,6 +217,23 @@ class StatsViewModelTest {
         val stat = vm.uiState.value.bookStats.first()
         assertEquals(1, stat.sessionCount)
         assertEquals(60, stat.totalReadingSeconds)
+    }
+
+    @Test
+    fun `deleteSession removes session from stats`() = runTest {
+        insertBook("b1")
+        insertSession("b1", durationSeconds = 60, wordsRead = 300)
+        val sessionId = db.readingSessionDao().getAllSessionsOnce().single().sessionId
+        val vm = createViewModel()
+        waitForEmission()
+        advanceUntilIdle()
+
+        vm.deleteSession(sessionId)
+        waitForEmission()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.bookStats.isEmpty())
+        assertNull(db.readingSessionDao().getById(sessionId))
     }
 
     private fun utcMs(year: Int, month: Int, day: Int): Long {

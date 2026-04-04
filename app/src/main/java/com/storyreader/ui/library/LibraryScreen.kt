@@ -297,6 +297,7 @@ fun LibraryScreen(
             sessionsFlow = viewModel.getSessionsForBook(book.bookId),
             onMarkAsRead = { viewModel.markAsRead(book.bookId) },
             onHideBook = { viewModel.hideBook(book.bookId) },
+            onDeleteSession = viewModel::deleteSession,
             onDismiss = { selectedBookForDetail = null }
         )
     }

@@ -147,6 +147,7 @@ fun StatsScreen(
             sessionsFlow = viewModel.getSessionsForBook(book.bookId),
             onMarkAsRead = { viewModel.markAsRead(book.bookId) },
             onHideBook = null,
+            onDeleteSession = viewModel::deleteSession,
             onDismiss = { selectedBookForDetail = null }
         )
     }

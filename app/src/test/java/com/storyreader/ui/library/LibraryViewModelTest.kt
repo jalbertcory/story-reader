@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -266,5 +267,21 @@ class LibraryViewModelTest {
 
         val book = vm.uiState.value.books.find { it.bookId == "b1" }
         assertEquals(1f, book?.totalProgression ?: 0f, 0.001f)
+    }
+
+    @Test
+    fun `deleteSession removes saved session`() = runTest {
+        insertBook("b1", "Test Book")
+        insertSession("b1", startTime = 1000L)
+        val sessionId = db.readingSessionDao().getAllSessionsOnce().single().sessionId
+        val vm = createViewModel()
+        waitForEmission()
+        advanceUntilIdle()
+
+        vm.deleteSession(sessionId)
+        waitForEmission()
+        advanceUntilIdle()
+
+        assertNull(db.readingSessionDao().getById(sessionId))
     }
 }

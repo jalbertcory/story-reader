@@ -204,6 +204,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun deleteSession(sessionId: Long) {
+        viewModelScope.launch {
+            sessionDao.deleteById(sessionId)
+        }
+    }
+
     fun getSessionsForBook(bookId: String): Flow<List<ReadingSessionEntity>> =
         sessionDao.getSessionsForBook(bookId)
 

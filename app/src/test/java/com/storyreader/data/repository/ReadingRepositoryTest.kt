@@ -96,6 +96,24 @@ class ReadingRepositoryTest {
     }
 
     @Test
+    fun `finalizeSession deletes sessions shorter than 10 seconds`() = runTest {
+        val startMs = System.currentTimeMillis() - 5_000L
+        val sessionId = repository.startSession("book1")
+
+        repository.finalizeSession(
+            sessionId = sessionId,
+            pageTurnTimestampsMs = listOf(startMs + 3_000L),
+            sessionStartMs = startMs,
+            progressionStart = 0f,
+            progressionEnd = 0.02f,
+            bookWordCount = 50_000
+        )
+
+        val session = db.readingSessionDao().getById(sessionId)
+        assertNull(session)
+    }
+
+    @Test
     fun `observeSessionsForBook returns only sessions for that book`() = runTest {
         db.bookDao().insert(BookEntity(bookId = "book2", title = "Other", author = "Author"))
         // Insert sessions with non-zero duration (0-duration sessions are filtered as orphans)
