@@ -21,6 +21,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -51,11 +52,13 @@ fun BookDetailSheet(
     sessionsFlow: Flow<List<ReadingSessionEntity>>,
     onMarkAsRead: (() -> Unit)?,
     onHideBook: (() -> Unit)?,
+    onDeleteSession: ((Long) -> Unit)?,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sessions by sessionsFlow.collectAsState(initial = emptyList())
     var showRemoveConfirm by remember { mutableStateOf(false) }
+    var sessionToDelete by remember { mutableStateOf<ReadingSessionEntity?>(null) }
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy  h:mm a", Locale.getDefault()) }
 
     ModalBottomSheet(
@@ -144,7 +147,11 @@ fun BookDetailSheet(
                 }
 
                 items(sessions.take(20)) { session ->
-                    SessionRow(session, dateFormat)
+                    SessionRow(
+                        session = session,
+                        dateFormat = dateFormat,
+                        onDelete = onDeleteSession?.let { { sessionToDelete = session } }
+                    )
                 }
 
                 if (sessions.size > 20) {
@@ -217,6 +224,33 @@ fun BookDetailSheet(
             }
         )
     }
+
+    sessionToDelete?.let { session ->
+        AlertDialog(
+            onDismissRequest = { sessionToDelete = null },
+            title = { Text("Delete Session?") },
+            text = {
+                Text(
+                    "Delete the ${if (session.isTts) "TTS" else "manual"} session from ${
+                        dateFormat.format(Date(session.startTime))
+                    }? This will remove it from your stats."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteSession?.invoke(session.sessionId)
+                    sessionToDelete = null
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -235,7 +269,11 @@ private fun DetailRow(label: String, value: String) {
 }
 
 @Composable
-private fun SessionRow(session: ReadingSessionEntity, dateFormat: SimpleDateFormat) {
+private fun SessionRow(
+    session: ReadingSessionEntity,
+    dateFormat: SimpleDateFormat,
+    onDelete: (() -> Unit)?
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -255,17 +293,28 @@ private fun SessionRow(session: ReadingSessionEntity, dateFormat: SimpleDateForm
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    formatDuration(session.durationSeconds),
-                    style = MaterialTheme.typography.bodySmall
-                )
-                if (session.wordsRead > 0) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "${formatWordCount(session.wordsRead.toLong())} words",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        formatDuration(session.durationSeconds),
+                        style = MaterialTheme.typography.bodySmall
                     )
+                    if (session.wordsRead > 0) {
+                        Text(
+                            "${formatWordCount(session.wordsRead.toLong())} words",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Delete session",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }

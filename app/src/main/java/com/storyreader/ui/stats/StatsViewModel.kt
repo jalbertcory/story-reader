@@ -201,6 +201,14 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteSession(sessionId: Long) {
+        viewModelScope.launch {
+            sessionDao.deleteById(sessionId)
+            refreshYearSelection()
+            loadYearData(_uiState.value.selectedYear)
+        }
+    }
+
     fun setGoalWords(words: Int) {
         prefs.edit { putInt(KEY_GOAL_WORDS, words) }
         _uiState.value = _uiState.value.copy(
@@ -220,5 +228,15 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         cal.set(year + 1, Calendar.JANUARY, 1, 0, 0, 0)
         cal.set(Calendar.MILLISECOND, 0)
         return cal.timeInMillis
+    }
+
+    private suspend fun refreshYearSelection() {
+        val years = sessionDao.getReadingYears().ifEmpty { listOf(currentYear) }
+        val currentSelection = _uiState.value.selectedYear
+        val selectedYear = if (currentSelection in years) currentSelection else years.first()
+        _uiState.value = _uiState.value.copy(
+            availableYears = years,
+            selectedYear = selectedYear
+        )
     }
 }
