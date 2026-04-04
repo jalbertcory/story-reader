@@ -26,9 +26,10 @@ class WebDavSyncRepository(
     positionDao: ReadingPositionDao,
     sessionDao: ReadingSessionDao,
     bookDao: com.storyreader.data.db.dao.BookDao? = null,
+    appStateStore: SyncAppStateStore? = null,
     private val recoveryManager: RemoteBookRecoveryManager? = null
 ) {
-    private val payloadStore = SyncPayloadStore(positionDao, sessionDao, bookDao)
+    private val payloadStore = SyncPayloadStore(positionDao, sessionDao, bookDao, appStateStore)
 
     private fun createClient(): OkHttpClient {
         val authHandler = BasicDigestAuthHandler(

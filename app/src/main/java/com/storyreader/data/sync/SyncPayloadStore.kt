@@ -15,7 +15,8 @@ private const val MIN_SYNC_SESSION_DURATION_SECONDS = 10
 class SyncPayloadStore(
     private val positionDao: ReadingPositionDao,
     private val sessionDao: ReadingSessionDao,
-    private val bookDao: BookDao? = null
+    private val bookDao: BookDao? = null,
+    private val appStateStore: SyncAppStateStore? = null
 ) {
 
     suspend fun buildLatestJson(remoteJson: JSONObject? = null): JSONObject {
@@ -49,9 +50,15 @@ class SyncPayloadStore(
                 .sortedWith(compareBy<SyncBookPayload> { it.title.lowercase() }.thenBy { it.author.lowercase() })
                 .forEach(::add)
         }
+        val mergedAppState = appStateStore
+            ?.buildLocalPayload()
+            ?.mergeWith(appStateStore.parseRemotePayload(remoteJson))
 
         return JSONObject().apply {
             put("schemaVersion", SYNC_SCHEMA_VERSION)
+            if (mergedAppState != null) {
+                put("app", mergedAppState.toJson())
+            }
             put("books", JSONArray().apply {
                 mergedBooks.forEach { put(it.toJson()) }
             })
@@ -65,6 +72,7 @@ class SyncPayloadStore(
         }
 
         val dao = bookDao ?: return
+        appStateStore?.mergeRemoteData(remoteJson)
         val localBooks = normalizeLocalBooks(dao.getAllIncludingHiddenOnce())
         val localBooksBySyncId = localBooks.associateBy { BookSyncMetadata.syncIdFor(it) }
         val localPositionsByBookId = positionDao.getLatestPositionPerBook().associateBy { it.bookId }
@@ -230,6 +238,7 @@ class SyncPayloadStore(
             syncId = bookSyncId,
             title = book.title,
             author = book.author,
+            sourceType = book.sourceType,
             series = book.series,
             seriesIndex = book.seriesIndex,
             sourceKind = inferredSourceKind,
@@ -270,6 +279,7 @@ class SyncPayloadStore(
         return local.copy(
             title = local.title.ifBlank { remote.title },
             author = local.author.ifBlank { remote.author },
+            sourceType = local.sourceType ?: remote.sourceType,
             series = local.series ?: remote.series,
             seriesIndex = local.seriesIndex ?: remote.seriesIndex,
             sourceKind = local.sourceKind ?: remote.sourceKind,
@@ -294,6 +304,7 @@ class SyncPayloadStore(
                 shouldPreferRemoteFileName && remote.originalFileName != null -> remote.originalFileName
                 else -> local.originalFileName
             },
+            sourceType = local.sourceType ?: remote.sourceType,
             series = local.series ?: remote.series,
             seriesIndex = local.seriesIndex ?: remote.seriesIndex,
             serverBookId = local.serverBookId ?: remote.serverBookId
@@ -324,6 +335,7 @@ class SyncPayloadStore(
                         syncId = syncId,
                         title = obj.optString("title", ""),
                         author = obj.optString("author", ""),
+                        sourceType = obj.optStringOrNull("sourceType"),
                         series = obj.optStringOrNull("series"),
                         seriesIndex = obj.optFloatOrNull("seriesIndex"),
                         sourceKind = source?.optStringOrNull("kind"),
@@ -420,6 +432,7 @@ class SyncPayloadStore(
         val syncId: String,
         val title: String,
         val author: String,
+        val sourceType: String?,
         val series: String?,
         val seriesIndex: Float?,
         val sourceKind: String?,
@@ -441,6 +454,7 @@ class SyncPayloadStore(
             put("syncId", syncId)
             put("title", title)
             put("author", author)
+            if (sourceType != null) put("sourceType", sourceType)
             if (series != null) put("series", series)
             if (seriesIndex != null) put("seriesIndex", seriesIndex.toDouble())
             put(

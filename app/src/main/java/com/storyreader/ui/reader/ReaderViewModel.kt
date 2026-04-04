@@ -11,6 +11,15 @@ import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
+import com.storyreader.data.sync.KEY_BRIGHTNESS_LEVEL
+import com.storyreader.data.sync.KEY_FONT_FAMILY
+import com.storyreader.data.sync.KEY_FONT_SIZE
+import com.storyreader.data.sync.KEY_IS_NIGHT
+import com.storyreader.data.sync.KEY_SCROLL
+import com.storyreader.data.sync.KEY_SYNC_READER_UPDATED_AT
+import com.storyreader.data.sync.KEY_TEXT_ALIGN
+import com.storyreader.data.sync.KEY_THEME
+import com.storyreader.data.sync.READER_PREFS_NAME
 import com.storyreader.data.sync.SyncScheduler
 import com.storyreader.reader.epub.EpubRepository
 import com.storyreader.reader.tts.TtsMediaService
@@ -66,14 +75,6 @@ data class ReaderUiState(
 
 private const val TAG = "ReaderViewModel"
 private const val END_OF_BOOK_THRESHOLD = 0.99
-private const val PREFS_NAME = "reader_preferences"
-private const val KEY_FONT_SIZE = "font_size"
-private const val KEY_THEME = "theme"
-private const val KEY_FONT_FAMILY = "font_family"
-private const val KEY_IS_NIGHT = "is_night_theme"
-private const val KEY_SCROLL = "scroll_mode"
-private const val KEY_TEXT_ALIGN = "text_align"
-private const val KEY_BRIGHTNESS_LEVEL = "brightness_level"
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -82,7 +83,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val bookRepository: BookRepository = app.bookRepository
     private val readingRepository: ReadingRepository = app.readingRepository
     private val epubRepository: EpubRepository = app.epubRepository
-    private val prefStore = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefStore = application.getSharedPreferences(READER_PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
@@ -467,6 +468,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun savePreferences(prefs: EpubPreferences) {
         val isNight = prefs.backgroundColor?.int == 0xFF000000.toInt()
+        val updatedAt = System.currentTimeMillis()
         prefStore.edit {
             if (prefs.fontSize != null) putFloat(KEY_FONT_SIZE, prefs.fontSize!!.toFloat())
             else remove(KEY_FONT_SIZE)
@@ -485,6 +487,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 TextAlign.JUSTIFY -> putString(KEY_TEXT_ALIGN, "JUSTIFY")
                 else -> remove(KEY_TEXT_ALIGN)
             }
+            putLong(KEY_SYNC_READER_UPDATED_AT, updatedAt)
         }
         app.isDarkReadingTheme.value = prefs.theme == Theme.DARK || isNight
     }
@@ -501,6 +504,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private fun saveBrightnessLevel(level: Float) {
         prefStore.edit {
             putFloat(KEY_BRIGHTNESS_LEVEL, ReaderBrightness.clamp(level))
+            putLong(KEY_SYNC_READER_UPDATED_AT, System.currentTimeMillis())
         }
     }
 

@@ -6,6 +6,7 @@ import com.storyreader.data.db.AppDatabase
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.db.entity.ReadingPositionEntity
 import com.storyreader.data.db.entity.ReadingSessionEntity
+import androidx.core.content.edit
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,18 +24,24 @@ class SyncPayloadStoreTest {
 
     private lateinit var db: AppDatabase
     private lateinit var store: SyncPayloadStore
+    private lateinit var appStateStore: SyncAppStateStore
 
     @Before
     fun setUp() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         db = Room.inMemoryDatabaseBuilder(
-            ApplicationProvider.getApplicationContext(),
+            context,
             AppDatabase::class.java
         ).allowMainThreadQueries().build()
+        context.getSharedPreferences(READER_PREFS_NAME, android.content.Context.MODE_PRIVATE).edit { clear() }
+        context.getSharedPreferences(GOALS_PREFS_NAME, android.content.Context.MODE_PRIVATE).edit { clear() }
+        appStateStore = SyncAppStateStore(context)
 
         store = SyncPayloadStore(
             positionDao = db.readingPositionDao(),
             sessionDao = db.readingSessionDao(),
-            bookDao = db.bookDao()
+            bookDao = db.bookDao(),
+            appStateStore = appStateStore
         )
     }
 
@@ -149,11 +156,53 @@ class SyncPayloadStoreTest {
         )
 
         val json = store.buildLatestJson()
-        val source = json.getJSONArray("books").getJSONObject(0).getJSONObject("source")
+        val book = json.getJSONArray("books").getJSONObject(0)
+        val source = book.getJSONObject("source")
 
         assertEquals(SyncSourceKinds.STORY_MANAGER, source.getString("kind"))
         assertEquals("/reader/books/42/download", source.getString("url"))
         assertEquals(42, source.getInt("serverBookId"))
+        assertEquals("web", book.getString("sourceType"))
+    }
+
+    @Test
+    fun `buildLatestJson includes reader tts and goal settings`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.getSharedPreferences(READER_PREFS_NAME, android.content.Context.MODE_PRIVATE).edit {
+            putFloat(KEY_FONT_SIZE, 1.8f)
+            putString(KEY_THEME, "SEPIA")
+            putString(KEY_FONT_FAMILY, "Literata")
+            putBoolean(KEY_IS_NIGHT, false)
+            putBoolean(KEY_SCROLL, true)
+            putString(KEY_TEXT_ALIGN, "JUSTIFY")
+            putFloat(KEY_BRIGHTNESS_LEVEL, 0.75f)
+            putString(KEY_TTS_PREFS, """{"speed":1.7}""")
+            putString(KEY_TTS_ENGINE, "engine.pkg")
+            putLong(KEY_SYNC_READER_UPDATED_AT, 100L)
+            putLong(KEY_SYNC_TTS_UPDATED_AT, 200L)
+        }
+        context.getSharedPreferences(GOALS_PREFS_NAME, android.content.Context.MODE_PRIVATE).edit {
+            putInt(KEY_GOAL_HOURS, 120)
+            putInt(KEY_GOAL_WORDS, 900_000)
+            putLong(KEY_SYNC_GOALS_UPDATED_AT, 300L)
+        }
+
+        val json = store.buildLatestJson()
+        val app = json.getJSONObject("app")
+        val reader = app.getJSONObject("reader")
+        val tts = app.getJSONObject("tts")
+        val goals = app.getJSONObject("goals")
+
+        assertEquals(1.8, reader.getDouble("fontSize"), 0.001)
+        assertEquals("SEPIA", reader.getString("theme"))
+        assertEquals("Literata", reader.getString("fontFamily"))
+        assertEquals(true, reader.getBoolean("scrollMode"))
+        assertEquals("JUSTIFY", reader.getString("textAlign"))
+        assertEquals(0.75, reader.getDouble("brightnessLevel"), 0.001)
+        assertEquals("""{"speed":1.7}""", tts.getString("preferencesJson"))
+        assertEquals("engine.pkg", tts.getString("enginePackageName"))
+        assertEquals(120, goals.getInt("hoursPerYear"))
+        assertEquals(900_000, goals.getInt("wordsPerYear"))
     }
 
     @Test
@@ -303,6 +352,7 @@ class SyncPayloadStoreTest {
                     title = "Metadata Book",
                     author = "Author",
                     furthestProgress = 0.2f,
+                    sourceType = "web",
                     sourceKind = SyncSourceKinds.OPDS,
                     sourceUrl = "https://catalog.example/metadata-book.epub",
                     originalFileName = "metadata-book.epub",
@@ -320,6 +370,76 @@ class SyncPayloadStoreTest {
         assertEquals("Recovered Series", updated?.series)
         assertEquals(4f, updated?.seriesIndex ?: 0f, 0.001f)
         assertEquals(77, updated?.serverBookId)
+        assertEquals("web", updated?.sourceType)
+    }
+
+    @Test
+    fun `mergeRemoteData applies newer app settings`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.getSharedPreferences(READER_PREFS_NAME, android.content.Context.MODE_PRIVATE).edit {
+            putFloat(KEY_FONT_SIZE, 1.2f)
+            putLong(KEY_SYNC_READER_UPDATED_AT, 100L)
+            putLong(KEY_SYNC_TTS_UPDATED_AT, 100L)
+        }
+        context.getSharedPreferences(GOALS_PREFS_NAME, android.content.Context.MODE_PRIVATE).edit {
+            putInt(KEY_GOAL_HOURS, 50)
+            putInt(KEY_GOAL_WORDS, 500_000)
+            putLong(KEY_SYNC_GOALS_UPDATED_AT, 100L)
+        }
+
+        store.mergeRemoteData(
+            remoteJson(
+                remoteBookJson(
+                    syncId = "remote-book",
+                    title = "Remote",
+                    author = "Author",
+                    furthestProgress = 0f
+                )
+            ).apply {
+                put(
+                    "app",
+                    JSONObject().apply {
+                        put(
+                            "reader",
+                            JSONObject().apply {
+                                put("updatedAt", 200L)
+                                put("fontSize", 1.9)
+                                put("theme", "DARK")
+                                put("isNightTheme", false)
+                                put("brightnessLevel", 0.4)
+                            }
+                        )
+                        put(
+                            "tts",
+                            JSONObject().apply {
+                                put("updatedAt", 200L)
+                                put("preferencesJson", """{"speed":2.0}""")
+                                put("enginePackageName", "updated.engine")
+                            }
+                        )
+                        put(
+                            "goals",
+                            JSONObject().apply {
+                                put("updatedAt", 200L)
+                                put("hoursPerYear", 80)
+                                put("wordsPerYear", 750000)
+                            }
+                        )
+                    }
+                )
+            }
+        )
+
+        val readerPrefs = context.getSharedPreferences(READER_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val goalsPrefs = context.getSharedPreferences(GOALS_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+
+        assertEquals(1.9f, readerPrefs.getFloat(KEY_FONT_SIZE, 0f), 0.001f)
+        assertEquals("DARK", readerPrefs.getString(KEY_THEME, null))
+        assertEquals(0.4f, readerPrefs.getFloat(KEY_BRIGHTNESS_LEVEL, 0f), 0.001f)
+        assertEquals("""{"speed":2.0}""", readerPrefs.getString(KEY_TTS_PREFS, null))
+        assertEquals("updated.engine", readerPrefs.getString(KEY_TTS_ENGINE, null))
+        assertEquals(80, goalsPrefs.getInt(KEY_GOAL_HOURS, 0))
+        assertEquals(750_000, goalsPrefs.getInt(KEY_GOAL_WORDS, 0))
     }
 
     private fun remoteJson(vararg books: JSONObject): JSONObject =
@@ -333,6 +453,7 @@ class SyncPayloadStoreTest {
         title: String,
         author: String,
         furthestProgress: Float,
+        sourceType: String? = null,
         isCompleted: Boolean = false,
         latestPositionTimestamp: Long? = null,
         latestLocatorJson: String? = null,
@@ -347,6 +468,7 @@ class SyncPayloadStoreTest {
         put("syncId", syncId)
         put("title", title)
         put("author", author)
+        if (sourceType != null) put("sourceType", sourceType)
         if (series != null) put("series", series)
         if (seriesIndex != null) put("seriesIndex", seriesIndex.toDouble())
         put(

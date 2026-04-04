@@ -26,6 +26,7 @@ import com.storyreader.data.sync.GoogleDriveSyncProvider
 import com.storyreader.data.sync.GoogleDriveSyncRepository
 import com.storyreader.data.sync.NextcloudSyncProvider
 import com.storyreader.data.sync.RemoteBookRecoveryManager
+import com.storyreader.data.sync.SyncAppStateStore
 import com.storyreader.data.sync.SyncCredentialsManager
 import com.storyreader.data.sync.SyncManager
 import com.storyreader.data.sync.SyncScheduler
@@ -110,12 +111,17 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
         )
     }
 
+    val syncAppStateStore: SyncAppStateStore by lazy {
+        SyncAppStateStore(this)
+    }
+
     val webDavSyncRepository: WebDavSyncRepository by lazy {
         WebDavSyncRepository(
             credentialsManager = credentialsManager,
             positionDao = database.readingPositionDao(),
             sessionDao = database.readingSessionDao(),
             bookDao = database.bookDao(),
+            appStateStore = syncAppStateStore,
             recoveryManager = remoteBookRecoveryManager
         )
     }
@@ -126,7 +132,8 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
             payloadStore = SyncPayloadStore(
                 positionDao = database.readingPositionDao(),
                 sessionDao = database.readingSessionDao(),
-                bookDao = database.bookDao()
+                bookDao = database.bookDao(),
+                appStateStore = syncAppStateStore
             ),
             googleDriveApi = googleDriveApi,
             recoveryManager = remoteBookRecoveryManager
