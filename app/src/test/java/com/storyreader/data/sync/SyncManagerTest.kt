@@ -3,6 +3,7 @@ package com.storyreader.data.sync
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,7 +32,7 @@ class SyncManagerTest {
         override val displayName = "Provider $id"
         override val isEnabled = enabled
         override val isConfigured = configured
-        override suspend fun sync() = syncResult
+        override suspend fun sync(onProgress: (SyncProgress) -> Unit) = syncResult
     }
 
     @Test
@@ -133,7 +134,7 @@ class SyncManagerTest {
             override val displayName = "P1"
             override val isEnabled = false
             override val isConfigured = true
-            override suspend fun sync(): Result<Unit> {
+            override suspend fun sync(onProgress: (SyncProgress) -> Unit): Result<Unit> {
                 syncCalled = true
                 return Result.success(Unit)
             }
@@ -150,7 +151,7 @@ class SyncManagerTest {
             override val displayName = "P1"
             override val isEnabled = true
             override val isConfigured = false
-            override suspend fun sync(): Result<Unit> {
+            override suspend fun sync(onProgress: (SyncProgress) -> Unit): Result<Unit> {
                 syncCalled = true
                 return Result.success(Unit)
             }
@@ -169,7 +170,7 @@ class SyncManagerTest {
             override val displayName = "P2"
             override val isEnabled = true
             override val isConfigured = true
-            override suspend fun sync(): Result<Unit> {
+            override suspend fun sync(onProgress: (SyncProgress) -> Unit): Result<Unit> {
                 p2Called = true
                 return Result.success(Unit)
             }
@@ -184,6 +185,30 @@ class SyncManagerTest {
             makeProvider("disabled-fail", enabled = false, configured = true,
                 syncResult = Result.failure(RuntimeException("would fail")))
         ))
+        assertTrue(manager.syncEnabledProviders().isSuccess)
+    }
+
+    @Test
+    fun `syncEnabledProviders publishes progress updates to status`() = runTest {
+        lateinit var manager: SyncManager
+        val provider = object : SyncProvider {
+            override val id = "p1"
+            override val displayName = "Provider p1"
+            override val isEnabled = true
+            override val isConfigured = true
+
+            override suspend fun sync(onProgress: (SyncProgress) -> Unit): Result<Unit> {
+                onProgress(SyncProgress(message = "Restoring books", completed = 2, total = 5))
+                val status = manager.status.value as SyncStatus.Syncing
+                assertEquals("Provider p1", status.providerName)
+                assertEquals("Restoring books", status.progress?.message)
+                assertEquals(2, status.progress?.completed)
+                assertEquals(5, status.progress?.total)
+                return Result.success(Unit)
+            }
+        }
+
+        manager = makeSyncManager(listOf(provider))
         assertTrue(manager.syncEnabledProviders().isSuccess)
     }
 }

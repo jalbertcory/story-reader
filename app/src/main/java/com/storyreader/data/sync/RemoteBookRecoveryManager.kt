@@ -23,6 +23,11 @@ data class RemoteRecoverySummary(
     val skipped: Int
 )
 
+data class RemoteRecoveryProgress(
+    val completed: Int,
+    val total: Int
+)
+
 class RemoteBookRecoveryManager(
     context: Context,
     private val bookDao: BookDao,
@@ -35,7 +40,10 @@ class RemoteBookRecoveryManager(
 ) {
     private val booksDir = File(context.filesDir, "books")
 
-    suspend fun recoverMissingBooks(remoteJson: JSONObject): RemoteRecoverySummary = withContext(Dispatchers.IO) {
+    suspend fun recoverMissingBooks(
+        remoteJson: JSONObject,
+        onProgress: (RemoteRecoveryProgress) -> Unit = {}
+    ): RemoteRecoverySummary = withContext(Dispatchers.IO) {
         val localSyncIds = bookDao.getAllIncludingHiddenOnce()
             .mapTo(mutableSetOf()) { BookSyncMetadata.syncIdFor(it) }
 
@@ -44,7 +52,15 @@ class RemoteBookRecoveryManager(
         var failed = 0
         var skipped = 0
 
-        parseRecoverableBooks(remoteJson).forEach { remoteBook ->
+        val remoteBooks = parseRecoverableBooks(remoteJson)
+        val recoverableBooks = remoteBooks.filter { remoteBook ->
+            remoteBook.syncId !in localSyncIds &&
+                remoteBook.sourceKind != null &&
+                remoteBook.sourceUrl != null
+        }
+        onProgress(RemoteRecoveryProgress(completed = 0, total = recoverableBooks.size))
+
+        remoteBooks.forEach { remoteBook ->
             if (remoteBook.syncId in localSyncIds) {
                 skipped++
                 return@forEach
@@ -77,6 +93,7 @@ class RemoteBookRecoveryManager(
                     error
                 )
             }
+            onProgress(RemoteRecoveryProgress(completed = attempted, total = recoverableBooks.size))
         }
 
         Log.i(TAG, "Recovery summary attempted=$attempted imported=$imported failed=$failed skipped=$skipped")

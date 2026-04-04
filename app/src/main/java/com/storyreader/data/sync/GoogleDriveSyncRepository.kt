@@ -9,7 +9,7 @@ class GoogleDriveSyncRepository(
     private val recoveryManager: RemoteBookRecoveryManager
 ) {
 
-    suspend fun syncBidirectional(): Result<Unit> = runCatching {
+    suspend fun syncBidirectional(onProgress: (SyncProgress) -> Unit = {}): Result<Unit> = runCatching {
         val accessToken = when (val authorization = authManager.authorize().getOrThrow()) {
             is GoogleDriveAuthorizationOutcome.Authorized -> authorization.accessToken
             is GoogleDriveAuthorizationOutcome.NeedsResolution -> {
@@ -17,18 +17,30 @@ class GoogleDriveSyncRepository(
             }
         }
 
+        onProgress(SyncProgress(message = "Checking remote backup"))
         val remoteFile = googleDriveApi.findSyncFile(accessToken, SYNC_FILE_NAME).getOrThrow()
         if (remoteFile != null) {
+            onProgress(SyncProgress(message = "Downloading sync data"))
             val remoteJson = googleDriveApi.downloadSyncJson(accessToken, remoteFile.id).getOrThrow()
+            onProgress(SyncProgress(message = "Merging remote progress"))
             payloadStore.mergeRemoteData(remoteJson)
-            val recoverySummary = recoveryManager.recoverMissingBooks(remoteJson)
+            onProgress(SyncProgress(message = "Restoring missing books"))
+            val recoverySummary = recoveryManager.recoverMissingBooks(remoteJson) { progress ->
+                onProgress(SyncProgress(
+                    message = "Restoring books",
+                    completed = progress.completed,
+                    total = progress.total
+                ))
+            }
             Log.i(
                 TAG,
                 "Recovery summary attempted=${recoverySummary.attempted} imported=${recoverySummary.imported} failed=${recoverySummary.failed} skipped=${recoverySummary.skipped}"
             )
             if (recoverySummary.imported > 0) {
+                onProgress(SyncProgress(message = "Applying restored progress"))
                 payloadStore.mergeRemoteData(remoteJson)
             }
+            onProgress(SyncProgress(message = "Uploading merged backup"))
             val mergedJson = payloadStore.buildLatestJson(remoteJson)
             googleDriveApi.uploadSyncJson(
                 accessToken = accessToken,
@@ -39,7 +51,9 @@ class GoogleDriveSyncRepository(
             return@runCatching
         }
 
+        onProgress(SyncProgress(message = "Creating initial backup"))
         val mergedJson = payloadStore.buildLatestJson()
+        onProgress(SyncProgress(message = "Uploading merged backup"))
         googleDriveApi.uploadSyncJson(
             accessToken = accessToken,
             fileId = remoteFile?.id,

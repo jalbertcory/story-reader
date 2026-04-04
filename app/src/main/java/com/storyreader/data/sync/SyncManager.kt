@@ -25,7 +25,9 @@ class SyncManager(
         val failures = mutableListOf<String>()
         enabledProviders.forEach { provider ->
             _status.value = SyncStatus.Syncing(provider.displayName)
-            provider.sync().onFailure { error ->
+            provider.sync { progress ->
+                _status.value = SyncStatus.Syncing(provider.displayName, progress)
+            }.onFailure { error ->
                 failures += "${provider.displayName}: ${error.message ?: "Unknown error"}"
             }
         }
