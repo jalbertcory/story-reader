@@ -2,21 +2,32 @@ package com.storyreader.data.sync
 
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 private const val TAG = "SyncManager"
 
+sealed interface SyncEvent {
+    data object ReloadAppRequested : SyncEvent
+}
+
 class SyncManager(
     private val providers: List<SyncProvider>,
-    private val syncSettingsStore: SyncSettingsStore
+    private val syncSettingsStore: SyncSettingsStore,
+    private val countLocalBooks: suspend () -> Int = { 0 },
+    private val onBooksAdded: (Int) -> Unit = {}
 ) {
 
     private val _status = MutableStateFlow<SyncStatus>(restoreLastStatus())
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
+    private val _events = MutableSharedFlow<SyncEvent>(extraBufferCapacity = 1)
+    val events: SharedFlow<SyncEvent> = _events.asSharedFlow()
     private val inFlightMutex = Mutex()
     private var inFlightSync: CompletableDeferred<Result<Unit>>? = null
 
@@ -75,6 +86,7 @@ class SyncManager(
             return Result.success(Unit)
         }
 
+        val startingBookCount = countLocalBooks()
         val failures = mutableListOf<String>()
         enabledProviders.forEach { provider ->
             _status.value = SyncStatus.Syncing(provider.displayName)
@@ -87,6 +99,14 @@ class SyncManager(
 
         val now = System.currentTimeMillis()
         return if (failures.isEmpty()) {
+            val endingBookCount = countLocalBooks()
+            val addedBooks = (endingBookCount - startingBookCount).coerceAtLeast(0)
+            if (addedBooks > 0) {
+                onBooksAdded(addedBooks)
+                if (startingBookCount == 0) {
+                    _events.tryEmit(SyncEvent.ReloadAppRequested)
+                }
+            }
             val completed = SyncStatus.Completed(now)
             _status.value = completed
             syncSettingsStore.lastSyncTimestampMs = now

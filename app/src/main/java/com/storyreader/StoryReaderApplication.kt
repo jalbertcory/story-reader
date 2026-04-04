@@ -139,7 +139,13 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
                 NextcloudSyncProvider(syncSettingsStore, credentialsManager, webDavSyncRepository),
                 GoogleDriveSyncProvider(syncSettingsStore, googleDriveCredentialsManager, googleDriveSyncRepository)
             ),
-            syncSettingsStore = syncSettingsStore
+            syncSettingsStore = syncSettingsStore,
+            countLocalBooks = { database.bookDao().getAllIncludingHiddenOnce().size },
+            onBooksAdded = { _ ->
+                if (opdsCredentialsManager.isStoryManagerBackend) {
+                    WebBookUpdateScheduler.scheduleImmediateSync(this)
+                }
+            }
         )
     }
 

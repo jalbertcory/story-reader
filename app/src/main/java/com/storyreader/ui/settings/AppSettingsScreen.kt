@@ -1,5 +1,6 @@
 package com.storyreader.ui.settings
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.text.format.DateUtils
@@ -64,6 +65,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.sync.GoogleDriveAuthorizationOutcome
+import com.storyreader.data.sync.SyncEvent
 import com.storyreader.data.sync.SyncScheduler
 import com.storyreader.data.sync.SyncStatus
 import com.storyreader.ui.components.StoryReaderLinearProgressIndicator
@@ -104,6 +106,7 @@ data class AppSettingsUiState(
 
 sealed interface AppSettingsEvent {
     data class LaunchGoogleAuthorization(val request: IntentSenderRequest) : AppSettingsEvent
+    data object ReloadApp : AppSettingsEvent
 }
 
 class AppSettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -136,6 +139,16 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         )
     )
     val uiState: StateFlow<AppSettingsUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            app.syncManager.events.collect { event ->
+                when (event) {
+                    SyncEvent.ReloadAppRequested -> _events.emit(AppSettingsEvent.ReloadApp)
+                }
+            }
+        }
+    }
 
     fun onServerUrlChange(value: String) {
         _uiState.value = _uiState.value.copy(serverUrl = value, savedMessage = null)
@@ -461,6 +474,7 @@ fun AppSettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val authorizationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -472,6 +486,9 @@ fun AppSettingsScreen(
             when (event) {
                 is AppSettingsEvent.LaunchGoogleAuthorization -> {
                     authorizationLauncher.launch(event.request)
+                }
+                AppSettingsEvent.ReloadApp -> {
+                    (context as? Activity)?.recreate()
                 }
             }
         }
