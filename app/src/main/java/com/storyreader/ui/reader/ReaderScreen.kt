@@ -494,7 +494,7 @@ fun ReaderScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.dismissNextBookPrompt()
-                        viewModel.finalizeSession()
+                        viewModel.completeCurrentBookAndFinalizeSession()
                         onNavigateToBook(nextBook.bookId)
                     }) {
                         Text("Continue")
