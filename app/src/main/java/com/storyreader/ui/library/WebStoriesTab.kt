@@ -30,7 +30,7 @@ fun WebStoriesTab(
     lastReadTimes: Map<String, Long>,
     isCheckingUpdates: Boolean,
     onCheckForUpdates: () -> Unit,
-    onBookClick: (String) -> Unit
+    onBookClick: (BookEntity) -> Unit
 ) {
     if (books.isEmpty()) {
         Column(
@@ -61,7 +61,7 @@ fun WebStoriesTab(
             LibraryBookCard(
                 book = book,
                 lastReadAt = lastReadTimes[book.bookId],
-                onClick = { onBookClick(book.bookId) },
+                onClick = { onBookClick(book) },
                 onLongClick = {},
                 newWordsCount = newWords
             )

@@ -24,6 +24,7 @@ private const val TAG = "StoryManagerRepo"
 class StoryManagerRepository(
     private val apiClient: StoryManagerApiClient,
     private val bookDao: BookDao,
+    private val bookRepository: BookRepository,
     private val epubRepository: EpubRepository,
     private val downloadDir: File,
     private val coversDir: File
@@ -81,9 +82,13 @@ class StoryManagerRepository(
             serverWordCount = wordCount,
             lastSyncedAt = System.currentTimeMillis(),
             lastChapterTitle = existing?.lastChapterTitle,
-            lastChapterProgression = existing?.lastChapterProgression
+            lastChapterProgression = existing?.lastChapterProgression,
+            restartAt = existing?.restartAt
         )
         bookDao.insert(entity)
+        if (entity.shouldDeleteCompletedLocalFile()) {
+            deleteLocalBookFile(entity)
+        }
         entity
     }
 
@@ -210,6 +215,73 @@ class StoryManagerRepository(
         Log.d(TAG, "checkForUpdates: updated $updatedCount books")
         updatedCount
     } }
+
+    suspend fun pruneCompletedRecoverableBooks(): Result<Int> = withContext(Dispatchers.IO) { runCatching {
+        var deletedCount = 0
+        bookDao.getAllIncludingHiddenOnce().forEach { book ->
+            if (book.shouldDeleteCompletedLocalFile() && deleteLocalBookFile(book)) {
+                deletedCount++
+            }
+        }
+        deletedCount
+    } }
+
+    suspend fun restartBook(bookId: String, forceRedownload: Boolean): Result<BookEntity> = withContext(Dispatchers.IO) {
+        runCatching {
+            val existing = bookDao.getByIdOnce(bookId)
+                ?: throw IllegalArgumentException("Book not found")
+            val restartAt = System.currentTimeMillis()
+            bookRepository.resetBookProgress(existing.bookId, restartAt)
+            val resetBook = bookDao.getByIdOnce(existing.bookId)
+                ?: existing.copy(totalProgression = 0f, restartAt = restartAt)
+
+            if (!resetBook.isStoryManagerRecoverable()) {
+                return@runCatching resetBook
+            }
+
+            if (!forceRedownload && resetBook.hasLocalBookFile()) {
+                return@runCatching resetBook
+            }
+
+            val serverBookId = resetBook.serverBookId
+                ?: throw IllegalStateException("This book can't be re-downloaded")
+            val serverBook = fetchServerBook(serverBookId)
+            importSingleBook(serverBook).getOrThrow()
+        }
+    }
+
+    suspend fun restartSeries(seriesName: String): Result<Int> = withContext(Dispatchers.IO) { runCatching {
+        val seriesBooks = bookDao.getAllIncludingHiddenOnce()
+            .filter { it.series == seriesName }
+            .sortedWith(compareBy<BookEntity> { it.seriesIndex == null }.thenBy { it.seriesIndex }.thenBy { it.title.lowercase() })
+        require(seriesBooks.isNotEmpty()) { "Series not found" }
+
+        val restartAt = System.currentTimeMillis()
+        val missingRecoverableIds = mutableSetOf<Int>()
+        seriesBooks.forEach { book ->
+            bookRepository.resetBookProgress(book.bookId, restartAt)
+            if (book.isStoryManagerRecoverable() && !book.hasLocalBookFile()) {
+                book.serverBookId?.let(missingRecoverableIds::add)
+            }
+        }
+
+        if (missingRecoverableIds.isEmpty()) {
+            return@runCatching 0
+        }
+
+        val serverBooksById = apiClient.fetchAllBooks().getOrThrow().associateBy { it.id }
+        missingRecoverableIds.forEach { serverBookId ->
+            val serverBook = serverBooksById[serverBookId]
+                ?: throw IllegalStateException("Failed to find Story Manager book $serverBookId")
+            importSingleBook(serverBook).getOrThrow()
+        }
+        missingRecoverableIds.size
+    } }
+
+    private fun fetchServerBook(serverBookId: Int): ServerBook =
+        apiClient.fetchAllBooks().getOrThrow()
+            .firstOrNull { it.id == serverBookId }
+            ?: throw IllegalStateException("Failed to find Story Manager book $serverBookId")
 
     private fun parseServerTimestamp(timestamp: String): Long = try {
         Instant.parse(timestamp).toEpochMilli()

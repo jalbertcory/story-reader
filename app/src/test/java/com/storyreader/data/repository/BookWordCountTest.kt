@@ -33,7 +33,13 @@ class BookWordCountTest {
             .allowMainThreadQueries()
             .build()
 
-        repository = BookRepositoryImpl(context, db.bookDao(), EpubRepository(context))
+        repository = BookRepositoryImpl(
+            context,
+            db.bookDao(),
+            db.readingPositionDao(),
+            db.readingSessionDao(),
+            EpubRepository(context)
+        )
 
         countWordsInHtml = BookRepositoryImpl::class.java
             .getDeclaredMethod("countWordsInHtml", String::class.java)

@@ -84,4 +84,15 @@ private class TestBookRepository(
     override suspend fun getWordCount(bookId: String): Int = dao.getWordCountById(bookId) ?: 0
     override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) =
         dao.updateChapterPosition(bookId, title, progression)
+    override suspend fun resetBookProgress(bookId: String, restartAt: Long) {
+        val existing = dao.getByIdOnce(bookId) ?: return
+        dao.update(
+            existing.copy(
+                totalProgression = 0f,
+                lastChapterTitle = null,
+                lastChapterProgression = null,
+                restartAt = restartAt
+            )
+        )
+    }
 }

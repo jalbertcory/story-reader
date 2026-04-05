@@ -9,7 +9,7 @@ import com.storyreader.data.db.entity.ReadingSessionEntity
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val SYNC_SCHEMA_VERSION = 2
+private const val SYNC_SCHEMA_VERSION = 3
 private const val MIN_SYNC_SESSION_DURATION_SECONDS = 10
 
 class SyncPayloadStore(
@@ -82,13 +82,39 @@ class SyncPayloadStore(
 
         parseRemoteBooks(remoteJson).forEach { remoteBook ->
             val localBook = localBooksBySyncId[remoteBook.syncId] ?: return@forEach
-            val mergedBook = mergeRemoteMetadataIntoLocal(localBook, remoteBook)
+            val remoteRestartOverridesLocal = remoteBook.restartAt != null &&
+                (localBook.restartAt == null || remoteBook.restartAt > localBook.restartAt)
+            val effectiveRestartAt = maxOf(localBook.restartAt ?: Long.MIN_VALUE, remoteBook.restartAt ?: Long.MIN_VALUE)
+                .takeIf { it != Long.MIN_VALUE }
+            val normalizedRemoteBook = remoteBook.normalizedForRestart(effectiveRestartAt)
+            if (remoteRestartOverridesLocal) {
+                positionDao.deleteForBook(localBook.bookId)
+                sessionDao.deleteForBook(localBook.bookId)
+            }
+
+            val mergedBook = mergeRemoteMetadataIntoLocal(localBook, normalizedRemoteBook).let { merged ->
+                if (remoteRestartOverridesLocal) {
+                    merged.copy(
+                        totalProgression = 0f,
+                        lastChapterTitle = null,
+                        lastChapterProgression = null
+                    )
+                } else {
+                    merged
+                }
+            }
             if (mergedBook != localBook) {
                 dao.update(mergedBook)
             }
 
-            val remoteLatestPosition = remoteBook.latestPosition
-            val localLatestPosition = localPositionsByBookId[localBook.bookId]
+            val remoteLatestPosition = normalizedRemoteBook.latestPosition
+            val localLatestPosition = if (remoteRestartOverridesLocal) {
+                null
+            } else {
+                localPositionsByBookId[localBook.bookId]?.takeIf {
+                    effectiveRestartAt == null || it.timestamp >= effectiveRestartAt
+                }
+            }
             if (remoteLatestPosition != null &&
                 (localLatestPosition == null || remoteLatestPosition.timestamp > localLatestPosition.timestamp)
             ) {
@@ -101,21 +127,26 @@ class SyncPayloadStore(
                 )
             }
 
-            val remoteProgress = remoteBook.effectiveProgress()
+            val remoteProgress = normalizedRemoteBook.effectiveProgress()
             if (remoteProgress > mergedBook.totalProgression) {
                 dao.updateProgression(localBook.bookId, remoteProgress)
             }
 
-            val localSessionIds = localSessionsByBookId[localBook.bookId].orEmpty()
-                .mapTo(mutableSetOf()) {
-                    BookSyncMetadata.sessionIdFor(
-                        bookSyncId = BookSyncMetadata.syncIdFor(mergedBook),
-                        startTime = it.startTime,
-                        isTts = it.isTts
-                    )
-                }
+            val localSessionIds = if (remoteRestartOverridesLocal) {
+                mutableSetOf()
+            } else {
+                localSessionsByBookId[localBook.bookId].orEmpty()
+                    .filter { effectiveRestartAt == null || it.startTime >= effectiveRestartAt }
+                    .mapTo(mutableSetOf()) {
+                        BookSyncMetadata.sessionIdFor(
+                            bookSyncId = BookSyncMetadata.syncIdFor(mergedBook),
+                            startTime = it.startTime,
+                            isTts = it.isTts
+                        )
+                    }
+            }
 
-            remoteBook.sessions
+            normalizedRemoteBook.sessions
                 .filter { it.durationSeconds >= MIN_SYNC_SESSION_DURATION_SECONDS }
                 .forEach { remoteSession ->
                     if (remoteSession.id in localSessionIds) return@forEach
@@ -227,7 +258,8 @@ class SyncPayloadStore(
         }
         val latestPayload = latestPosition?.let {
             LatestPositionPayload(locatorJson = it.locatorJson, timestamp = it.timestamp)
-        }
+        }?.takeIf { book.restartAt == null || it.timestamp >= book.restartAt }
+        val sessionsSinceRestart = sessions.filter { book.restartAt == null || it.startTime >= book.restartAt }
         val furthestProgress = maxOf(
             book.totalProgression,
             latestPayload?.progression ?: 0f
@@ -245,10 +277,11 @@ class SyncPayloadStore(
             sourceUrl = inferredSourceUrl,
             serverBookId = book.serverBookId,
             originalFileName = book.originalFileName,
+            restartAt = book.restartAt,
             latestPosition = latestPayload,
             furthestProgress = furthestProgress,
             isCompleted = book.totalProgression >= 1f,
-            sessions = sessions.map { session ->
+            sessions = sessionsSinceRestart.map { session ->
                 SyncSessionPayload(
                     id = BookSyncMetadata.sessionIdFor(bookSyncId, session.startTime, session.isTts),
                     startTime = session.startTime,
@@ -265,16 +298,20 @@ class SyncPayloadStore(
     private fun mergeBookPayload(local: SyncBookPayload, remote: SyncBookPayload?): SyncBookPayload {
         if (remote == null) return local
 
-        val latestPosition = listOfNotNull(local.latestPosition, remote.latestPosition)
+        val restartAt = maxOf(local.restartAt ?: Long.MIN_VALUE, remote.restartAt ?: Long.MIN_VALUE)
+            .takeIf { it != Long.MIN_VALUE }
+        val normalizedLocal = local.normalizedForRestart(restartAt)
+        val normalizedRemote = remote.normalizedForRestart(restartAt)
+        val latestPosition = listOfNotNull(normalizedLocal.latestPosition, normalizedRemote.latestPosition)
             .maxByOrNull { it.timestamp }
         val furthestProgress = maxOf(
-            local.furthestProgress,
-            remote.furthestProgress,
+            normalizedLocal.furthestProgress,
+            normalizedRemote.furthestProgress,
             latestPosition?.progression ?: 0f
         )
         val sessionsById = linkedMapOf<String, SyncSessionPayload>()
-        remote.sessions.forEach { sessionsById[it.id] = it }
-        local.sessions.forEach { sessionsById[it.id] = it }
+        normalizedRemote.sessions.forEach { sessionsById[it.id] = it }
+        normalizedLocal.sessions.forEach { sessionsById[it.id] = it }
 
         return local.copy(
             title = local.title.ifBlank { remote.title },
@@ -286,9 +323,10 @@ class SyncPayloadStore(
             sourceUrl = local.sourceUrl ?: remote.sourceUrl,
             serverBookId = local.serverBookId ?: remote.serverBookId,
             originalFileName = local.originalFileName ?: remote.originalFileName,
+            restartAt = restartAt,
             latestPosition = latestPosition,
             furthestProgress = furthestProgress,
-            isCompleted = local.isCompleted || remote.isCompleted || furthestProgress >= 1f,
+            isCompleted = normalizedLocal.isCompleted || normalizedRemote.isCompleted || furthestProgress >= 1f,
             sessions = sessionsById.values.sortedByDescending { it.startTime }
         )
     }
@@ -307,7 +345,9 @@ class SyncPayloadStore(
             sourceType = local.sourceType ?: remote.sourceType,
             series = local.series ?: remote.series,
             seriesIndex = local.seriesIndex ?: remote.seriesIndex,
-            serverBookId = local.serverBookId ?: remote.serverBookId
+            serverBookId = local.serverBookId ?: remote.serverBookId,
+            restartAt = maxOf(local.restartAt ?: Long.MIN_VALUE, remote.restartAt ?: Long.MIN_VALUE)
+                .takeIf { it != Long.MIN_VALUE }
         )
     }
 
@@ -342,6 +382,7 @@ class SyncPayloadStore(
                         sourceUrl = source?.optStringOrNull("url"),
                         serverBookId = source?.optIntOrNull("serverBookId"),
                         originalFileName = source?.optStringOrNull("originalFileName"),
+                        restartAt = progress?.optLongOrNull("restartAt"),
                         latestPosition = latestPosition,
                         furthestProgress = progress?.optDouble("furthestProgress", 0.0)?.toFloat() ?: 0f,
                         isCompleted = progress?.optBoolean("isCompleted", false) == true,
@@ -377,6 +418,24 @@ class SyncPayloadStore(
 
     private fun isSchemaV2(remoteJson: JSONObject): Boolean =
         remoteJson.optInt("schemaVersion", 0) >= SYNC_SCHEMA_VERSION || remoteJson.has("books")
+
+    private fun SyncBookPayload.normalizedForRestart(targetRestartAt: Long?): SyncBookPayload {
+        if (targetRestartAt != null && restartAt != targetRestartAt) {
+            return copy(
+                latestPosition = null,
+                furthestProgress = 0f,
+                isCompleted = false,
+                sessions = emptyList()
+            )
+        }
+
+        if (targetRestartAt == null) return this
+
+        return copy(
+            latestPosition = latestPosition?.takeIf { it.timestamp >= targetRestartAt },
+            sessions = sessions.filter { it.startTime >= targetRestartAt }
+        )
+    }
 
     private fun extractProgression(locatorJson: String): Float = try {
         JSONObject(locatorJson)
@@ -439,6 +498,7 @@ class SyncPayloadStore(
         val sourceUrl: String?,
         val serverBookId: Int?,
         val originalFileName: String?,
+        val restartAt: Long?,
         val latestPosition: LatestPositionPayload?,
         val furthestProgress: Float,
         val isCompleted: Boolean,
@@ -469,6 +529,7 @@ class SyncPayloadStore(
             put(
                 "progress",
                 JSONObject().apply {
+                    if (restartAt != null) put("restartAt", restartAt)
                     if (latestPosition != null) put("latestPosition", latestPosition.toJson())
                     put("furthestProgress", furthestProgress.toDouble())
                     put("isCompleted", isCompleted)
@@ -489,3 +550,6 @@ private fun JSONObject.optFloatOrNull(key: String): Float? =
 
 private fun JSONObject.optIntOrNull(key: String): Int? =
     if (has(key) && !isNull(key)) optInt(key) else null
+
+private fun JSONObject.optLongOrNull(key: String): Long? =
+    if (has(key) && !isNull(key)) optLong(key) else null

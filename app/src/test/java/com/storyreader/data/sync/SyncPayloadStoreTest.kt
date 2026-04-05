@@ -86,7 +86,7 @@ class SyncPayloadStoreTest {
 
         val json = store.buildLatestJson()
 
-        assertEquals(2, json.getInt("schemaVersion"))
+        assertEquals(3, json.getInt("schemaVersion"))
         val books = json.getJSONArray("books")
         assertEquals(1, books.length())
 
@@ -284,6 +284,89 @@ class SyncPayloadStoreTest {
     }
 
     @Test
+    fun `buildLatestJson excludes pre-restart positions and sessions`() = runTest {
+        val restartAt = 10_000L
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "restart-book",
+                title = "Restarted",
+                author = "Author",
+                syncId = "restart-sync",
+                restartAt = restartAt
+            )
+        )
+        db.readingPositionDao().insertPosition(
+            ReadingPositionEntity(
+                bookId = "restart-book",
+                locatorJson = """{"locations":{"totalProgression":0.8}}""",
+                timestamp = 9_000L
+            )
+        )
+        db.readingSessionDao().insert(
+            ReadingSessionEntity(
+                bookId = "restart-book",
+                startTime = 9_500L,
+                durationSeconds = 120
+            )
+        )
+
+        val json = store.buildLatestJson()
+        val book = json.getJSONArray("books").getJSONObject(0)
+        val progress = book.getJSONObject("progress")
+
+        assertEquals(restartAt, progress.getLong("restartAt"))
+        assertEquals(0.0, progress.getDouble("furthestProgress"), 0.001)
+        assertEquals(0, book.getJSONArray("sessions").length())
+        assertEquals(false, progress.has("latestPosition"))
+    }
+
+    @Test
+    fun `mergeRemoteData honors newer remote restart over older local progress`() = runTest {
+        val syncId = BookSyncMetadata.syncIdFor("Restart Sync", "Author")
+        db.bookDao().insert(
+            BookEntity(
+                bookId = "restart-local",
+                title = "Restart Sync",
+                author = "Author",
+                syncId = syncId,
+                totalProgression = 1f
+            )
+        )
+        db.readingPositionDao().insertPosition(
+            ReadingPositionEntity(
+                bookId = "restart-local",
+                locatorJson = """{"locations":{"totalProgression":1.0}}""",
+                timestamp = 5_000L
+            )
+        )
+        db.readingSessionDao().insert(
+            ReadingSessionEntity(
+                bookId = "restart-local",
+                startTime = 6_000L,
+                durationSeconds = 180
+            )
+        )
+
+        store.mergeRemoteData(
+            remoteJson(
+                remoteBookJson(
+                    syncId = syncId,
+                    title = "Restart Sync",
+                    author = "Author",
+                    furthestProgress = 0f,
+                    restartAt = 20_000L
+                )
+            )
+        )
+
+        val updatedBook = db.bookDao().getByIdOnce("restart-local")
+        assertEquals(0f, updatedBook?.totalProgression ?: -1f, 0.001f)
+        assertEquals(20_000L, updatedBook?.restartAt)
+        assertEquals(null, db.readingPositionDao().getLatestPositionOnce("restart-local"))
+        assertTrue(db.readingSessionDao().getAllSessionsOnce().isEmpty())
+    }
+
+    @Test
     fun `mergeRemoteData skips remote-only books instead of creating stubs`() = runTest {
         store.mergeRemoteData(
             remoteJson(
@@ -444,7 +527,7 @@ class SyncPayloadStoreTest {
 
     private fun remoteJson(vararg books: JSONObject): JSONObject =
         JSONObject().apply {
-            put("schemaVersion", 2)
+            put("schemaVersion", 3)
             put("books", JSONArray().apply { books.forEach { put(it) } })
         }
 
@@ -463,6 +546,7 @@ class SyncPayloadStoreTest {
         series: String? = null,
         seriesIndex: Float? = null,
         serverBookId: Int? = null,
+        restartAt: Long? = null,
         sessions: List<JSONObject> = emptyList()
     ): JSONObject = JSONObject().apply {
         put("syncId", syncId)
@@ -483,6 +567,7 @@ class SyncPayloadStoreTest {
         put(
             "progress",
             JSONObject().apply {
+                if (restartAt != null) put("restartAt", restartAt)
                 put("furthestProgress", furthestProgress.toDouble())
                 put("isCompleted", isCompleted)
                 if (latestPositionTimestamp != null && latestLocatorJson != null) {

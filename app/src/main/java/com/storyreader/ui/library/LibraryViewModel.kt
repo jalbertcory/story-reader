@@ -63,7 +63,8 @@ data class LibraryUiState(
     val isStoryManagerBackend: Boolean = false,
     val isCheckingUpdates: Boolean = false,
     val isCheckingNewBooks: Boolean = false,
-    val newBooksMessage: String? = null
+    val newBooksMessage: String? = null,
+    val isRestarting: Boolean = false
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -80,6 +81,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         val isStoryManager = app.opdsCredentialsManager.isStoryManagerBackend
+        viewModelScope.launch {
+            app.storyManagerRepository.pruneCompletedRecoverableBooks()
+        }
         viewModelScope.launch {
             combine(
                 repository.observeAll(),
@@ -200,6 +204,50 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearNewBooksMessage() {
         _uiState.value = _uiState.value.copy(newBooksMessage = null)
+    }
+
+    fun restartBook(bookId: String, forceRedownload: Boolean, onComplete: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRestarting = true, error = null)
+            app.storyManagerRepository.restartBook(bookId, forceRedownload)
+                .onSuccess { book ->
+                    _uiState.value = _uiState.value.copy(isRestarting = false)
+                    onComplete(book.bookId)
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isRestarting = false,
+                        error = e.message ?: "Failed to restart book"
+                    )
+                }
+        }
+    }
+
+    fun restartSeries(seriesName: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRestarting = true, error = null, newBooksMessage = null)
+            app.storyManagerRepository.restartSeries(seriesName)
+                .onSuccess { redownloadedCount ->
+                    _uiState.value = _uiState.value.copy(
+                        isRestarting = false,
+                        newBooksMessage = if (redownloadedCount > 0) {
+                            "Restarted $seriesName and re-downloaded $redownloadedCount books"
+                        } else {
+                            "Restarted $seriesName"
+                        }
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isRestarting = false,
+                        error = e.message ?: "Failed to restart series"
+                    )
+                }
+            if (_uiState.value.newBooksMessage != null) {
+                delay(4000L)
+                clearNewBooksMessage()
+            }
+        }
     }
 
     fun markAsRead(bookId: String) {

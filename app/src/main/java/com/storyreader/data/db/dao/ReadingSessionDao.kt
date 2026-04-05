@@ -135,4 +135,7 @@ interface ReadingSessionDao {
 
     @Query("DELETE FROM reading_sessions WHERE sessionId = :sessionId")
     suspend fun deleteById(sessionId: Long)
+
+    @Query("DELETE FROM reading_sessions WHERE bookId = :bookId")
+    suspend fun deleteForBook(bookId: String)
 }

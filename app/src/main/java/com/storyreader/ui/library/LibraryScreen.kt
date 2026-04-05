@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,6 +69,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.repository.requiresRestartToOpen
 import com.storyreader.ui.components.BookCoverThumbnail
 import com.storyreader.ui.components.BookProgressRow
 import java.text.SimpleDateFormat
@@ -109,6 +111,16 @@ fun LibraryScreen(
     var showImportMenu by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedBookForDetail by remember { mutableStateOf<BookEntity?>(null) }
+    var bookToRestart by remember { mutableStateOf<BookEntity?>(null) }
+    var seriesToRestart by remember { mutableStateOf<LibrarySeriesGroup?>(null) }
+
+    fun handleBookOpen(book: BookEntity) {
+        if (book.requiresRestartToOpen()) {
+            bookToRestart = book
+        } else {
+            onBookClick(book.bookId)
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -233,7 +245,7 @@ fun LibraryScreen(
                             lastReadTimes = uiState.lastReadTimes,
                             isCheckingUpdates = uiState.isCheckingUpdates,
                             onCheckForUpdates = { viewModel.checkForWebUpdates() },
-                            onBookClick = onBookClick
+                            onBookClick = ::handleBookOpen
                         )
                     }
                     uiState.libraryGroups.isEmpty() -> {
@@ -257,8 +269,9 @@ fun LibraryScreen(
                     LibraryGroupedList(
                         groups = uiState.libraryGroups,
                         lastReadTimes = uiState.lastReadTimes,
-                        onBookClick = onBookClick,
+                        onBookClick = ::handleBookOpen,
                         onBookLongClick = { selectedBookForDetail = it },
+                        onSeriesLongClick = { seriesToRestart = it },
                         showCheckForNewBooks = uiState.isStoryManagerBackend,
                         isCheckingNewBooks = uiState.isCheckingNewBooks,
                         onCheckForNewBooks = { viewModel.checkForNewBooks() },
@@ -301,6 +314,74 @@ fun LibraryScreen(
             onDismiss = { selectedBookForDetail = null }
         )
     }
+
+    bookToRestart?.let { book ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!uiState.isRestarting) {
+                    bookToRestart = null
+                }
+            },
+            title = { Text("Restart Book?") },
+            text = {
+                Text("The local copy of \"${book.title}\" was removed to save space. Restart it from the beginning and download it again?")
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !uiState.isRestarting,
+                    onClick = {
+                        viewModel.restartBook(book.bookId, forceRedownload = true) { newBookId ->
+                            bookToRestart = null
+                            onBookClick(newBookId)
+                        }
+                    }
+                ) {
+                    Text(if (uiState.isRestarting) "Restarting..." else "Restart")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !uiState.isRestarting,
+                    onClick = { bookToRestart = null }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    seriesToRestart?.let { group ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!uiState.isRestarting) {
+                    seriesToRestart = null
+                }
+            },
+            title = { Text("Restart Series?") },
+            text = {
+                Text("Restart every book in ${group.seriesName}. This clears progress for the series and re-downloads any missing Story Manager books.")
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !uiState.isRestarting,
+                    onClick = {
+                        group.seriesName?.let(viewModel::restartSeries)
+                        seriesToRestart = null
+                    }
+                ) {
+                    Text(if (uiState.isRestarting) "Restarting..." else "Restart Series")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !uiState.isRestarting,
+                    onClick = { seriesToRestart = null }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 private fun resolveResumeBook(
@@ -322,8 +403,9 @@ private fun resolveResumeBook(
 private fun LibraryGroupedList(
     groups: List<LibrarySeriesGroup>,
     lastReadTimes: Map<String, Long>,
-    onBookClick: (String) -> Unit,
+    onBookClick: (BookEntity) -> Unit,
     onBookLongClick: (BookEntity) -> Unit,
+    onSeriesLongClick: (LibrarySeriesGroup) -> Unit,
     showCheckForNewBooks: Boolean = false,
     isCheckingNewBooks: Boolean = false,
     onCheckForNewBooks: () -> Unit = {},
@@ -345,7 +427,7 @@ private fun LibraryGroupedList(
                         .fillMaxWidth()
                         .combinedClickable(
                             onClick = { expandedSeries[group.seriesName] = !isExpanded },
-                            onLongClick = {}
+                            onLongClick = { onSeriesLongClick(group) }
                         )
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -357,7 +439,7 @@ private fun LibraryGroupedList(
                             Box(
                                 modifier = Modifier
                                     .clickable(enabled = resumeBook != null) {
-                                        resumeBook?.let { onBookClick(it.bookId) }
+                                        resumeBook?.let(onBookClick)
                                     },
                                 contentAlignment = Alignment.BottomEnd
                             ) {
@@ -442,7 +524,7 @@ private fun LibraryGroupedList(
                                     LibraryBookCard(
                                         book = book,
                                         lastReadAt = lastReadTimes[book.bookId],
-                                        onClick = { onBookClick(book.bookId) },
+                                        onClick = { onBookClick(book) },
                                         onLongClick = { onBookLongClick(book) }
                                     )
                                 }
@@ -456,7 +538,7 @@ private fun LibraryGroupedList(
                 LibraryBookCard(
                     book = book,
                     lastReadAt = lastReadTimes[book.bookId],
-                    onClick = { onBookClick(book.bookId) },
+                    onClick = { onBookClick(book) },
                     onLongClick = { onBookLongClick(book) }
                 )
             }
