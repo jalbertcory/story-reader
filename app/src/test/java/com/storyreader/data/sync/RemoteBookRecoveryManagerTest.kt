@@ -7,8 +7,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.db.AppDatabase
 import com.storyreader.data.db.entity.BookEntity
-import com.storyreader.data.db.entity.ReadingPositionEntity
-import com.storyreader.data.db.entity.ReadingSessionEntity
 import com.storyreader.data.repository.BookRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow

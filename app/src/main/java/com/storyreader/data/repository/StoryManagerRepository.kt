@@ -254,9 +254,7 @@ class StoryManagerRepository(
         val seriesBooks = bookDao.getAllIncludingHiddenOnce()
             .filter { it.series == seriesName }
             .sortedWith(compareBy<BookEntity> { it.seriesIndex == null }.thenBy { it.seriesIndex }.thenBy { it.title.lowercase() })
-        if (seriesBooks.isEmpty()) {
-            throw IllegalArgumentException("Series not found")
-        }
+        require(seriesBooks.isNotEmpty()) { "Series not found" }
 
         val restartAt = System.currentTimeMillis()
         val missingRecoverableIds = mutableSetOf<Int>()
