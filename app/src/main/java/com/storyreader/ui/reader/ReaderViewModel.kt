@@ -36,11 +36,13 @@ import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.input.InputListener
+import org.readium.r2.navigator.input.Key
+import org.readium.r2.navigator.input.KeyEvent
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.FontFamily
+import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.navigator.preferences.TextAlign
 import org.readium.r2.navigator.preferences.Theme
-import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -74,7 +76,14 @@ data class ReaderUiState(
 )
 
 private const val TAG = "ReaderViewModel"
-private const val END_OF_BOOK_THRESHOLD = 0.99
+private const val NEXT_BOOK_PROMPT_MIN_PROGRESS = 0.995
+private const val END_OF_BOOK_EPSILON = 0.000001
+private const val END_OF_BOOK_TURN_CHECK_DELAY_MS = 500L
+
+private enum class EndOfBookTrigger {
+    Passive,
+    ForwardAttempt
+}
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -105,12 +114,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _showNextBookPrompt = MutableStateFlow<NextBookInfo?>(null)
     val showNextBookPrompt: StateFlow<NextBookInfo?> = _showNextBookPrompt.asStateFlow()
-    private var nextBookChecked = false
+    private var dismissedNextBookPromptLocator: Locator? = null
 
     private var navigator: EpubNavigatorFragment? = null
     private var locatorJob: Job? = null
     private var preferencesJob: Job? = null
     private var savePositionJob: Job? = null
+    private var failedForwardTurnJob: Job? = null
+    private var pendingForwardTurnLocator: Locator? = null
     private var currentBookId: String? = null
     private var currentCoverArt: ByteArray? = null
     private var isWebBook: Boolean = false
@@ -202,8 +213,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun openBook(bookId: String) {
         if (currentBookId == bookId) return
         currentBookId = bookId
-        nextBookChecked = false
+        dismissedNextBookPromptLocator = null
         _showNextBookPrompt.value = null
+        clearPendingForwardTurnCheck()
 
         viewModelScope.launch {
             _uiState.value = ReaderUiState(isLoading = true)
@@ -251,6 +263,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onProgressionChanged(bookId: String, locator: Locator) {
         _currentLocator.value = locator
+        if (locator != pendingForwardTurnLocator) {
+            clearPendingForwardTurnCheck()
+        }
+        if (locator != dismissedNextBookPromptLocator) {
+            dismissedNextBookPromptLocator = null
+        }
         if (ttsController.ttsState.value == TtsPlaybackState.STOPPED) {
             ttsController.clearResumeLocator()
         }
@@ -265,13 +283,26 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        checkEndOfBook(bookId, locator)
+        checkExactEndOfBook(bookId, locator)
     }
 
-    private fun checkEndOfBook(bookId: String, locator: Locator) {
+    private fun checkExactEndOfBook(bookId: String, locator: Locator) {
         val totalProgression = locator.locations.totalProgression ?: return
-        if (totalProgression < END_OF_BOOK_THRESHOLD || nextBookChecked) return
-        nextBookChecked = true
+        if (totalProgression + END_OF_BOOK_EPSILON < 1.0) return
+        maybeShowNextBookPrompt(bookId, EndOfBookTrigger.Passive)
+    }
+
+    private fun maybeShowNextBookPrompt(bookId: String, trigger: EndOfBookTrigger) {
+        val totalProgression = _currentLocator.value?.locations?.totalProgression ?: return
+        if (totalProgression < NEXT_BOOK_PROMPT_MIN_PROGRESS) return
+        if (_showNextBookPrompt.value != null) return
+        if (
+            trigger == EndOfBookTrigger.Passive &&
+            dismissedNextBookPromptLocator != null &&
+            dismissedNextBookPromptLocator == _currentLocator.value
+        ) {
+            return
+        }
 
         viewModelScope.launch {
             val book = app.database.bookDao().getByIdOnce(bookId) ?: return@launch
@@ -286,7 +317,47 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun clearPendingForwardTurnCheck() {
+        failedForwardTurnJob?.cancel()
+        failedForwardTurnJob = null
+        pendingForwardTurnLocator = null
+    }
+
+    private fun scheduleFailedForwardTurnCheck(bookId: String, locatorBeforeTurn: Locator) {
+        clearPendingForwardTurnCheck()
+        pendingForwardTurnLocator = locatorBeforeTurn
+        failedForwardTurnJob = viewModelScope.launch {
+            delay(END_OF_BOOK_TURN_CHECK_DELAY_MS)
+            if (currentBookId == bookId && _currentLocator.value == locatorBeforeTurn) {
+                maybeShowNextBookPrompt(bookId, EndOfBookTrigger.ForwardAttempt)
+            }
+            clearPendingForwardTurnCheck()
+        }
+    }
+
+    fun attemptDirectionalNavigation(forward: Boolean, animated: Boolean = false): Boolean {
+        val overflowableNav = navigator as? OverflowableNavigator ?: return false
+        if (!forward) {
+            clearPendingForwardTurnCheck()
+            return overflowableNav.goBackward(animated = animated)
+        }
+
+        val bookId = currentBookId ?: return false
+        val locatorBeforeTurn = _currentLocator.value
+        val didAttemptTurn = overflowableNav.goForward(animated = animated)
+        if (!didAttemptTurn) {
+            maybeShowNextBookPrompt(bookId, EndOfBookTrigger.ForwardAttempt)
+            return true
+        }
+
+        if (locatorBeforeTurn != null) {
+            scheduleFailedForwardTurnCheck(bookId, locatorBeforeTurn)
+        }
+        return true
+    }
+
     fun dismissNextBookPrompt() {
+        dismissedNextBookPromptLocator = _currentLocator.value
         _showNextBookPrompt.value = null
     }
 
@@ -321,6 +392,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             .launchIn(viewModelScope)
 
         ttsController.onNavigatorReady(nav)
+        val overflowableNav = nav as OverflowableNavigator
 
         nav.addInputListener(object : InputListener {
             override fun onTap(event: TapEvent): Boolean {
@@ -337,14 +409,37 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     return true
                 }
                 _showBars.value = false
-                return false
+                if (overflowableNav.overflow.value.scroll) {
+                    return false
+                }
+                return when (overflowableNav.overflow.value.readingProgression) {
+                    ReadingProgression.RTL -> attemptDirectionalNavigation(forward = event.point.x < edgeSize)
+                    else -> attemptDirectionalNavigation(forward = event.point.x > viewWidth - edgeSize)
+                }
+            }
+
+            override fun onKey(event: KeyEvent): Boolean {
+                if (event.type != KeyEvent.Type.Down || event.modifiers.isNotEmpty()) {
+                    return false
+                }
+
+                return when (event.key) {
+                    Key.ArrowUp -> attemptDirectionalNavigation(forward = false)
+                    Key.ArrowDown, Key.Space -> attemptDirectionalNavigation(forward = true)
+                    Key.ArrowLeft -> when (overflowableNav.overflow.value.readingProgression) {
+                        ReadingProgression.RTL -> attemptDirectionalNavigation(forward = true)
+                        else -> attemptDirectionalNavigation(forward = false)
+                    }
+
+                    Key.ArrowRight -> when (overflowableNav.overflow.value.readingProgression) {
+                        ReadingProgression.RTL -> attemptDirectionalNavigation(forward = false)
+                        else -> attemptDirectionalNavigation(forward = true)
+                    }
+
+                    else -> false
+                }
             }
         })
-
-        val overflowableNav = nav as? OverflowableNavigator
-        if (overflowableNav != null) {
-            nav.addInputListener(DirectionalNavigationAdapter(overflowableNav))
-        }
     }
 
     fun navigateToLink(link: Link) {
@@ -545,20 +640,35 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun finalizeSession() {
+    private fun finalizeSessionInternal(markCurrentBookComplete: Boolean) {
+        val bookId = currentBookId ?: return
         sessionTracker.finalize(
-            bookId = currentBookId ?: return,
+            bookId = bookId,
             currentLocator = _currentLocator.value,
             currentChapterTitle = _currentChapter.value?.title,
-            isWebBook = isWebBook
+            isWebBook = isWebBook,
+            onPositionSave = if (markCurrentBookComplete) {
+                { bookRepository.updateProgression(bookId, 1f) }
+            } else {
+                null
+            }
         )
         if (app.credentialsManager.hasCredentials) {
             SyncScheduler.scheduleImmediateSync(app)
         }
     }
 
+    fun finalizeSession() {
+        finalizeSessionInternal(markCurrentBookComplete = false)
+    }
+
+    fun completeCurrentBookAndFinalizeSession() {
+        finalizeSessionInternal(markCurrentBookComplete = true)
+    }
+
     override fun onCleared() {
         super.onCleared()
+        clearPendingForwardTurnCheck()
         ttsController.onCleared()
         sessionTracker.finalize(
             bookId = currentBookId ?: return,
