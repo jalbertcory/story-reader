@@ -6,6 +6,9 @@ import android.content.Intent
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.media3.common.MediaMetadata
+import com.storyreader.data.sync.KEY_SYNC_TTS_UPDATED_AT
+import com.storyreader.data.sync.KEY_TTS_ENGINE
+import com.storyreader.data.sync.KEY_TTS_PREFS
 import com.storyreader.reader.tts.TtsCatalog
 import com.storyreader.reader.tts.TtsHighlightSynchronizer
 import com.storyreader.reader.tts.TtsManager
@@ -37,8 +40,6 @@ import java.util.Locale
 
 private const val TAG = "ReaderTtsController"
 private const val TRACE_TAG = "TTS_TRACE"
-private const val KEY_TTS_PREFS = "tts_prefs_json"
-private const val KEY_TTS_ENGINE = "tts_engine"
 private const val DEFAULT_TTS_SPEED = 1.5
 private const val PAGE_START_CANDIDATE_SCRIPT = """
 (() => {
@@ -577,6 +578,7 @@ class ReaderTtsController(
         prefStore.edit {
             putString(KEY_TTS_PREFS, ttsPreferencesSerializer.serialize(_ttsPreferences.value))
             putString(KEY_TTS_ENGINE, selectedTtsEnginePackageName)
+            putLong(KEY_SYNC_TTS_UPDATED_AT, System.currentTimeMillis())
         }
     }
 

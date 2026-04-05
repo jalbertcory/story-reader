@@ -10,6 +10,12 @@ import com.storyreader.data.db.dao.BookSessionStats
 import com.storyreader.data.db.dao.MonthlyReadingStat
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.db.entity.ReadingSessionEntity
+import com.storyreader.data.sync.DEFAULT_GOAL_HOURS
+import com.storyreader.data.sync.DEFAULT_GOAL_WORDS
+import com.storyreader.data.sync.GOALS_PREFS_NAME
+import com.storyreader.data.sync.KEY_GOAL_HOURS
+import com.storyreader.data.sync.KEY_GOAL_WORDS
+import com.storyreader.data.sync.KEY_SYNC_GOALS_UPDATED_AT
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,18 +58,12 @@ data class StatsUiState(
     val isLoading: Boolean = true
 )
 
-private const val PREFS_NAME = "reading_goals"
-private const val KEY_GOAL_HOURS = "goal_hours_per_year"
-private const val KEY_GOAL_WORDS = "goal_words_per_year"
-private const val DEFAULT_GOAL_HOURS = 50
-private const val DEFAULT_GOAL_WORDS = 500_000
-
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as StoryReaderApplication
     private val sessionDao = app.database.readingSessionDao()
     private val bookRepository = app.bookRepository
-    private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = application.getSharedPreferences(GOALS_PREFS_NAME, Context.MODE_PRIVATE)
 
     private val currentYear = Calendar.getInstance().get(Calendar.YEAR)
 
@@ -186,7 +186,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setGoalHours(hours: Int) {
-        prefs.edit { putInt(KEY_GOAL_HOURS, hours) }
+        prefs.edit {
+            putInt(KEY_GOAL_HOURS, hours)
+            putLong(KEY_SYNC_GOALS_UPDATED_AT, System.currentTimeMillis())
+        }
         _uiState.value = _uiState.value.copy(
             globalStats = _uiState.value.globalStats?.copy(goalHoursPerYear = hours)
         )
@@ -210,7 +213,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setGoalWords(words: Int) {
-        prefs.edit { putInt(KEY_GOAL_WORDS, words) }
+        prefs.edit {
+            putInt(KEY_GOAL_WORDS, words)
+            putLong(KEY_SYNC_GOALS_UPDATED_AT, System.currentTimeMillis())
+        }
         _uiState.value = _uiState.value.copy(
             globalStats = _uiState.value.globalStats?.copy(goalWordsPerYear = words)
         )

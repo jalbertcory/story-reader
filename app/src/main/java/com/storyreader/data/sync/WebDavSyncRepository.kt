@@ -25,9 +25,11 @@ class WebDavSyncRepository(
     private val credentialsManager: SyncCredentialsManager,
     positionDao: ReadingPositionDao,
     sessionDao: ReadingSessionDao,
-    bookDao: com.storyreader.data.db.dao.BookDao? = null
+    bookDao: com.storyreader.data.db.dao.BookDao? = null,
+    appStateStore: SyncAppStateStore? = null,
+    private val recoveryManager: RemoteBookRecoveryManager? = null
 ) {
-    private val payloadStore = SyncPayloadStore(positionDao, sessionDao, bookDao)
+    private val payloadStore = SyncPayloadStore(positionDao, sessionDao, bookDao, appStateStore)
 
     private fun createClient(): OkHttpClient {
         val authHandler = BasicDigestAuthHandler(
@@ -142,10 +144,12 @@ class WebDavSyncRepository(
         }
     }
 
-    suspend fun syncBidirectional(): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun syncBidirectional(onProgress: (SyncProgress) -> Unit = {}): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             // Download remote data (may not exist yet)
+            onProgress(SyncProgress(message = "Checking remote backup"))
             val remoteJson = try {
+                onProgress(SyncProgress(message = "Downloading sync data"))
                 downloadJson()
             } catch (e: Exception) {
                 Log.w(TAG, "No remote sync data found (may not exist yet)", e)
@@ -153,10 +157,30 @@ class WebDavSyncRepository(
             }
 
             if (remoteJson != null) {
+                onProgress(SyncProgress(message = "Merging remote progress"))
                 payloadStore.mergeRemoteData(remoteJson)
+                onProgress(SyncProgress(message = "Restoring missing books"))
+                val recoverySummary = recoveryManager?.recoverMissingBooks(remoteJson) { progress ->
+                    onProgress(SyncProgress(
+                        message = "Restoring books",
+                        completed = progress.completed,
+                        total = progress.total
+                    ))
+                }
+                if (recoverySummary != null) {
+                    Log.i(
+                        TAG,
+                        "Recovery summary attempted=${recoverySummary.attempted} imported=${recoverySummary.imported} failed=${recoverySummary.failed} skipped=${recoverySummary.skipped}"
+                    )
+                }
+                if ((recoverySummary?.imported ?: 0) > 0) {
+                    onProgress(SyncProgress(message = "Applying restored progress"))
+                    payloadStore.mergeRemoteData(remoteJson)
+                }
             }
 
-            val json = payloadStore.buildLatestJson()
+            onProgress(SyncProgress(message = "Uploading merged backup"))
+            val json = payloadStore.buildLatestJson(remoteJson)
             uploadJson(json)
 
             Result.success(Unit)

@@ -6,5 +6,5 @@ interface SyncProvider {
     val isEnabled: Boolean
     val isConfigured: Boolean
 
-    suspend fun sync(): Result<Unit>
+    suspend fun sync(onProgress: (SyncProgress) -> Unit = {}): Result<Unit>
 }

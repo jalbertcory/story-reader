@@ -13,5 +13,6 @@ class GoogleDriveSyncProvider(
     override val isConfigured: Boolean
         get() = credentialsManager.hasAccount
 
-    override suspend fun sync(): Result<Unit> = repository.syncBidirectional()
+    override suspend fun sync(onProgress: (SyncProgress) -> Unit): Result<Unit> =
+        repository.syncBidirectional(onProgress)
 }

@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.catalog.OpdsCatalogEntry
+import com.storyreader.data.sync.BookImportMetadata
+import com.storyreader.data.sync.SyncSourceKinds
 import com.storyreader.data.catalog.OpdsCredentials
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,7 +96,14 @@ class OpdsBrowserViewModel(application: Application) : AndroidViewModel(applicat
             val booksDir = File(getApplication<Application>().filesDir, "books")
             opdsRepository.downloadPublication(credentials, entry, booksDir)
                 .onSuccess { file ->
-                    bookRepository.importFromUri(Uri.fromFile(file))
+                    bookRepository.importFromUri(
+                        Uri.fromFile(file),
+                        BookImportMetadata(
+                            sourceKind = SyncSourceKinds.OPDS,
+                            sourceUrl = entry.acquisitionUrl,
+                            originalFileName = file.name
+                        )
+                    )
                 }
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(

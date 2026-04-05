@@ -1,5 +1,6 @@
 package com.storyreader.ui.settings
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.text.format.DateUtils
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -29,10 +31,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,8 +65,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.sync.GoogleDriveAuthorizationOutcome
+import com.storyreader.data.sync.SyncEvent
 import com.storyreader.data.sync.SyncScheduler
 import com.storyreader.data.sync.SyncStatus
+import com.storyreader.ui.components.StoryReaderLinearProgressIndicator
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -100,6 +106,7 @@ data class AppSettingsUiState(
 
 sealed interface AppSettingsEvent {
     data class LaunchGoogleAuthorization(val request: IntentSenderRequest) : AppSettingsEvent
+    data object ReloadApp : AppSettingsEvent
 }
 
 class AppSettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -132,6 +139,16 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         )
     )
     val uiState: StateFlow<AppSettingsUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            app.syncManager.events.collect { event ->
+                when (event) {
+                    SyncEvent.ReloadAppRequested -> _events.emit(AppSettingsEvent.ReloadApp)
+                }
+            }
+        }
+    }
 
     fun onServerUrlChange(value: String) {
         _uiState.value = _uiState.value.copy(serverUrl = value, savedMessage = null)
@@ -457,6 +474,7 @@ fun AppSettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val authorizationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -468,6 +486,9 @@ fun AppSettingsScreen(
             when (event) {
                 is AppSettingsEvent.LaunchGoogleAuthorization -> {
                     authorizationLauncher.launch(event.request)
+                }
+                AppSettingsEvent.ReloadApp -> {
+                    (context as? Activity)?.recreate()
                 }
             }
         }
@@ -507,12 +528,14 @@ fun AppSettingsScreen(
             Button(
                 onClick = viewModel::syncNow,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = uiState.canSyncNow && !uiState.isSyncingNow
+                enabled = uiState.canSyncNow &&
+                    !uiState.isSyncingNow &&
+                    syncStatus !is SyncStatus.Syncing
             ) {
                 Text(
                     when {
+                        syncStatus is SyncStatus.Syncing -> syncButtonLabel(syncStatus as SyncStatus.Syncing)
                         uiState.isSyncingNow -> "Syncing..."
-                        syncStatus is SyncStatus.Syncing -> "Syncing ${(syncStatus as SyncStatus.Syncing).providerName}..."
                         else -> "Sync Now"
                     }
                 )
@@ -800,27 +823,83 @@ private fun CollapsibleSection(
 
 @Composable
 private fun SyncStatusLine(syncStatus: SyncStatus) {
-    val text = when (syncStatus) {
-        is SyncStatus.Idle -> null
-        is SyncStatus.Syncing -> "Syncing ${syncStatus.providerName}..."
-        is SyncStatus.Completed -> "Last synced ${
-            DateUtils.getRelativeTimeSpanString(
-                syncStatus.timestampMs,
-                System.currentTimeMillis(),
-                DateUtils.MINUTE_IN_MILLIS
-            )
-        }"
-        is SyncStatus.Failed -> "Last sync failed: ${syncStatus.message}"
-    }
-    if (text != null) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = when (syncStatus) {
-                is SyncStatus.Failed -> MaterialTheme.colorScheme.error
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
+    when (syncStatus) {
+        is SyncStatus.Idle -> Unit
+        is SyncStatus.Syncing -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(top = 1.dp)
+                            .size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = syncStatusText(syncStatus),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val progress = syncStatus.progress?.fraction
+                if (progress != null) {
+                    StoryReaderLinearProgressIndicator(
+                        progress = progress,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
-        )
+        }
+        is SyncStatus.Completed -> {
+            Text(
+                text = "Last synced ${
+                    DateUtils.getRelativeTimeSpanString(
+                        syncStatus.timestampMs,
+                        System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS
+                    )
+                }",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        is SyncStatus.Failed -> {
+            Text(
+                text = "Last sync failed: ${syncStatus.message}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+private fun syncButtonLabel(syncStatus: SyncStatus.Syncing): String {
+    val progress = syncStatus.progress
+    val detail = progress?.message
+    val completed = progress?.completed
+    val total = progress?.total
+    return when {
+        detail != null && completed != null && total != null && total > 0 ->
+            "$detail $completed/$total"
+        detail != null -> detail
+        else -> "Syncing ${syncStatus.providerName}..."
+    }
+}
+
+private fun syncStatusText(syncStatus: SyncStatus.Syncing): String {
+    val progress = syncStatus.progress
+    val detail = progress?.message
+    val completed = progress?.completed
+    val total = progress?.total
+    return when {
+        detail != null && completed != null && total != null && total > 0 ->
+            "Syncing ${syncStatus.providerName}: $detail $completed/$total"
+        detail != null -> "Syncing ${syncStatus.providerName}: $detail"
+        else -> "Syncing ${syncStatus.providerName}..."
     }
 }
 

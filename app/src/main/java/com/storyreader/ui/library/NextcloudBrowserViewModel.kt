@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.storyreader.StoryReaderApplication
+import com.storyreader.data.sync.BookImportMetadata
 import com.storyreader.data.sync.NextcloudItem
+import com.storyreader.data.sync.SyncSourceKinds
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,7 +105,14 @@ class NextcloudBrowserViewModel(application: Application) : AndroidViewModel(app
         val destFile = File(booksDir, item.name)
         webDavRepo.downloadEpub(item.url, destFile)
             .onSuccess {
-                bookRepository.importFromUri(android.net.Uri.fromFile(destFile))
+                bookRepository.importFromUri(
+                    android.net.Uri.fromFile(destFile),
+                    BookImportMetadata(
+                        sourceKind = SyncSourceKinds.NEXTCLOUD,
+                        sourceUrl = item.url,
+                        originalFileName = item.name
+                    )
+                )
             }
             .onFailure { e ->
                 _uiState.value = _uiState.value.copy(

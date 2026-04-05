@@ -20,6 +20,9 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE hidden = 0 ORDER BY title ASC")
     suspend fun getAllOnce(): List<BookEntity>
 
+    @Query("SELECT * FROM books ORDER BY title ASC")
+    suspend fun getAllIncludingHiddenOnce(): List<BookEntity>
+
     @Query("SELECT * FROM books WHERE bookId = :bookId")
     fun getById(bookId: String): Flow<BookEntity?>
 

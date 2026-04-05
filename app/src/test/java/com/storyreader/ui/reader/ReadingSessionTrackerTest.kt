@@ -2,14 +2,15 @@ package com.storyreader.ui.reader
 
 import android.net.Uri
 import com.storyreader.data.db.entity.BookEntity
+import com.storyreader.data.db.entity.ReadingPositionEntity
+import com.storyreader.data.db.entity.ReadingSessionEntity
 import com.storyreader.data.repository.BookRepository
 import com.storyreader.data.repository.ReadingRepository
-import com.storyreader.data.db.entity.ReadingSessionEntity
+import com.storyreader.data.sync.BookImportMetadata
 import com.storyreader.util.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
-import com.storyreader.data.db.entity.ReadingPositionEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -423,7 +424,7 @@ class ReadingSessionTrackerTest {
         override suspend fun updateProgression(bookId: String, progression: Float) {
             progressionUpdates.add(bookId to progression)
         }
-        override suspend fun importFromUri(uri: Uri): Result<BookEntity> =
+        override suspend fun importFromUri(uri: Uri, importMetadata: BookImportMetadata?): Result<BookEntity> =
             Result.failure(UnsupportedOperationException())
         override suspend fun getWordCount(bookId: String): Int = 10000
         override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) {

@@ -8,6 +8,9 @@ import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.db.entity.ReadingSessionEntity
 import com.storyreader.data.repository.BookRepository
+import com.storyreader.data.sync.BookImportMetadata
+import com.storyreader.data.sync.BookSyncMetadata
+import com.storyreader.data.sync.SyncSourceKinds
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -138,7 +141,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun importBook(uri: Uri) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            repository.importFromUri(uri)
+            repository.importFromUri(
+                uri,
+                BookImportMetadata(
+                    sourceKind = SyncSourceKinds.DEVICE,
+                    sourceUrl = uri.toString(),
+                    originalFileName = BookSyncMetadata.extractOriginalFileName(uri.toString())
+                )
+            )
                 .onSuccess { _uiState.value = _uiState.value.copy(isLoading = false) }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
