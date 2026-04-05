@@ -283,18 +283,32 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
         // Merge and sort all groups together
         val allGroups = seriesGroups + standaloneGroups
-        return when (sort) {
-            LibrarySortOption.LAST_READ -> allGroups.sortedByDescending { it.lastReadTime ?: 0L }
-            LibrarySortOption.TITLE -> allGroups.sortedBy {
+        return sortLibraryGroups(allGroups, sort)
+    }
+
+    private fun sortLibraryGroups(
+        groups: List<LibrarySeriesGroup>,
+        sort: LibrarySortOption
+    ): List<LibrarySeriesGroup> {
+        val sortComparator = when (sort) {
+            LibrarySortOption.LAST_READ -> compareByDescending<LibrarySeriesGroup> {
+                it.lastReadTime ?: 0L
+            }
+            LibrarySortOption.TITLE -> compareBy<LibrarySeriesGroup> {
                 (it.seriesName ?: it.books.firstOrNull()?.title ?: "").lowercase()
             }
-            LibrarySortOption.AUTHOR -> allGroups.sortedBy {
+            LibrarySortOption.AUTHOR -> compareBy<LibrarySeriesGroup> {
                 it.books.firstOrNull()?.author?.lowercase() ?: ""
             }
-            LibrarySortOption.PROGRESS -> allGroups.sortedByDescending {
+            LibrarySortOption.PROGRESS -> compareByDescending<LibrarySeriesGroup> {
                 it.totalProgression
             }
         }
+
+        return groups.sortedWith(
+            compareBy<LibrarySeriesGroup> { it.totalProgression >= 1f }
+                .then(sortComparator)
+        )
     }
 
 }

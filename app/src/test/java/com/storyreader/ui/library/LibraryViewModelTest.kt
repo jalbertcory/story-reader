@@ -156,6 +156,23 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `complete standalone books move to bottom of title sort`() = runTest {
+        val vm = createViewModel()
+        insertBook("b1", "A Complete", progression = 1f)
+        insertBook("b2", "Z In Progress", progression = 0.4f)
+        waitForEmission()
+        advanceUntilIdle()
+
+        vm.setSortOption(LibrarySortOption.TITLE)
+        waitForEmission()
+        advanceUntilIdle()
+
+        val groups = vm.uiState.value.libraryGroups
+        assertEquals("Z In Progress", groups[0].books.single().title)
+        assertEquals("A Complete", groups[1].books.single().title)
+    }
+
+    @Test
     fun `sort by last read orders by session time descending`() = runTest {
         val vm = createViewModel()
         insertBook("b1", "Older")
@@ -171,6 +188,28 @@ class LibraryViewModelTest {
 
         assertEquals("Newer", vm.uiState.value.books[0].title)
         assertEquals("Older", vm.uiState.value.books[1].title)
+    }
+
+    @Test
+    fun `complete series move to bottom of library groups even if most recently read`() = runTest {
+        val vm = createViewModel()
+        insertBook("b1", "Series Book 1", series = "Complete Series", seriesIndex = 1f, progression = 1f)
+        insertBook("b2", "Series Book 2", series = "Complete Series", seriesIndex = 2f, progression = 1f)
+        insertBook("b3", "Current Read", progression = 0.5f)
+        insertSession("b1", startTime = 3000L)
+        insertSession("b2", startTime = 4000L)
+        insertSession("b3", startTime = 1000L)
+        waitForEmission()
+        advanceUntilIdle()
+
+        vm.setSortOption(LibrarySortOption.LAST_READ)
+        waitForEmission()
+        advanceUntilIdle()
+
+        val groups = vm.uiState.value.libraryGroups
+        assertNull(groups[0].seriesName)
+        assertEquals("Current Read", groups[0].books.single().title)
+        assertEquals("Complete Series", groups[1].seriesName)
     }
 
     @Test
