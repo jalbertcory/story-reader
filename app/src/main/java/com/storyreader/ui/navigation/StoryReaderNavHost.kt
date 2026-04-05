@@ -11,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.storyreader.StoryReaderApplication
+import com.storyreader.data.repository.requiresRestartToOpen
 import com.storyreader.ui.library.GoogleDriveBrowserScreen
 import com.storyreader.ui.library.LibraryScreen
 import com.storyreader.ui.library.NextcloudBrowserScreen
@@ -31,7 +32,13 @@ fun StoryReaderNavHost() {
     // Empty string means no recent book (show library). Null means still loading.
     val initialBookId by produceState<String?>(initialValue = null) {
         value = withContext(Dispatchers.IO) {
-            app.database.readingSessionDao().getMostRecentlyReadVisibleBookId() ?: ""
+            val recentBookId = app.database.readingSessionDao().getMostRecentlyReadVisibleBookId() ?: return@withContext ""
+            val recentBook = app.database.bookDao().getByIdOnce(recentBookId)
+            if (recentBook?.requiresRestartToOpen() == true) {
+                ""
+            } else {
+                recentBookId
+            }
         }
     }
 

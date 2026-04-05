@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import com.storyreader.data.db.dao.BookDao
+import com.storyreader.data.db.dao.ReadingPositionDao
+import com.storyreader.data.db.dao.ReadingSessionDao
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.sync.BookImportMetadata
 import com.storyreader.data.sync.BookSyncMetadata
@@ -29,11 +31,14 @@ interface BookRepository {
     suspend fun importFromUri(uri: Uri, importMetadata: BookImportMetadata? = null): Result<BookEntity>
     suspend fun getWordCount(bookId: String): Int
     suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?)
+    suspend fun resetBookProgress(bookId: String, restartAt: Long = System.currentTimeMillis())
 }
 
 class BookRepositoryImpl(
     private val context: Context,
     private val bookDao: BookDao,
+    private val positionDao: ReadingPositionDao,
+    private val sessionDao: ReadingSessionDao,
     private val epubRepository: EpubRepository
 ) : BookRepository {
 
@@ -51,14 +56,35 @@ class BookRepositoryImpl(
 
     override suspend fun unhideBook(bookId: String) = bookDao.setHidden(bookId, false)
 
-    override suspend fun updateProgression(bookId: String, progression: Float) =
+    override suspend fun updateProgression(bookId: String, progression: Float) {
         bookDao.updateProgression(bookId, progression)
+        if (progression >= 1f) {
+            bookDao.getByIdOnce(bookId)
+                ?.copy(totalProgression = progression)
+                ?.takeIf { it.shouldDeleteCompletedLocalFile() }
+                ?.let(::deleteLocalBookFile)
+        }
+    }
 
     override suspend fun getWordCount(bookId: String): Int =
         bookDao.getWordCountById(bookId) ?: 0
 
     override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) =
         bookDao.updateChapterPosition(bookId, title, progression)
+
+    override suspend fun resetBookProgress(bookId: String, restartAt: Long) {
+        val existing = bookDao.getByIdOnce(bookId) ?: return
+        positionDao.deleteForBook(bookId)
+        sessionDao.deleteForBook(bookId)
+        bookDao.update(
+            existing.copy(
+                totalProgression = 0f,
+                lastChapterTitle = null,
+                lastChapterProgression = null,
+                restartAt = restartAt
+            )
+        )
+    }
 
     override suspend fun importFromUri(uri: Uri, importMetadata: BookImportMetadata?): Result<BookEntity> {
         return epubRepository.openPublication(uri).map { publication ->
@@ -94,7 +120,8 @@ class BookRepositoryImpl(
                 lastSyncedAt = existing?.lastSyncedAt,
                 lastChapterTitle = existing?.lastChapterTitle,
                 lastChapterProgression = existing?.lastChapterProgression,
-                seriesIndex = existing?.seriesIndex
+                seriesIndex = existing?.seriesIndex,
+                restartAt = existing?.restartAt
             ).also { bookDao.insert(it) }
         }
     }

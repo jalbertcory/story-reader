@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.db.dao.BookDao
+import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.data.repository.BookRepository
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -74,14 +75,18 @@ class RemoteBookRecoveryManager(
 
             attempted++
             runCatching {
-                val recoveredFile = recoverToFile(remoteBook)
-                val importMetadata = BookImportMetadata(
-                    syncId = remoteBook.syncId,
-                    sourceKind = remoteBook.sourceKind,
-                    sourceUrl = remoteBook.sourceUrl,
-                    originalFileName = remoteBook.originalFileName ?: recoveredFile.name
-                )
-                bookRepository.importFromUri(Uri.fromFile(recoveredFile), importMetadata).getOrThrow()
+                if (remoteBook.shouldRecoverAsStub()) {
+                    bookDao.insert(remoteBook.toStubBook())
+                } else {
+                    val recoveredFile = recoverToFile(remoteBook)
+                    val importMetadata = BookImportMetadata(
+                        syncId = remoteBook.syncId,
+                        sourceKind = remoteBook.sourceKind,
+                        sourceUrl = remoteBook.sourceUrl,
+                        originalFileName = remoteBook.originalFileName ?: recoveredFile.name
+                    )
+                    bookRepository.importFromUri(Uri.fromFile(recoveredFile), importMetadata).getOrThrow()
+                }
                 localSyncIds += remoteBook.syncId
                 imported++
                 Log.i(TAG, "Recovered missing book ${remoteBook.syncId} from ${remoteBook.sourceKind}")
@@ -204,12 +209,29 @@ class RemoteBookRecoveryManager(
                 val obj = books.getJSONObject(i)
                 val syncId = obj.optString("syncId").takeIf { it.isNotBlank() } ?: continue
                 val source = obj.optJSONObject("source")
+                val progress = obj.optJSONObject("progress")
                 add(
                     RecoverableRemoteBook(
                         syncId = syncId,
+                        title = obj.optString("title", ""),
+                        author = obj.optString("author", ""),
+                        sourceType = obj.optString("sourceType").takeIf { it.isNotBlank() },
+                        series = obj.optString("series").takeIf { it.isNotBlank() },
+                        seriesIndex = if (obj.has("seriesIndex") && !obj.isNull("seriesIndex")) {
+                            obj.optDouble("seriesIndex").toFloat()
+                        } else {
+                            null
+                        },
                         sourceKind = source?.optString("kind")?.takeIf { it.isNotBlank() },
                         sourceUrl = source?.optString("url")?.takeIf { it.isNotBlank() },
-                        originalFileName = source?.optString("originalFileName")?.takeIf { it.isNotBlank() }
+                        originalFileName = source?.optString("originalFileName")?.takeIf { it.isNotBlank() },
+                        serverBookId = if (source?.has("serverBookId") == true && !source.isNull("serverBookId")) {
+                            source.optInt("serverBookId")
+                        } else {
+                            null
+                        },
+                        isCompleted = progress?.optBoolean("isCompleted", false) == true ||
+                            (progress?.optDouble("furthestProgress", 0.0) ?: 0.0) >= 1.0
                     )
                 )
             }
@@ -218,8 +240,34 @@ class RemoteBookRecoveryManager(
 
     private data class RecoverableRemoteBook(
         val syncId: String,
+        val title: String,
+        val author: String,
+        val sourceType: String?,
+        val series: String?,
+        val seriesIndex: Float?,
         val sourceKind: String?,
         val sourceUrl: String?,
-        val originalFileName: String?
-    )
+        val originalFileName: String?,
+        val serverBookId: Int?,
+        val isCompleted: Boolean
+    ) {
+        fun shouldRecoverAsStub(): Boolean =
+            sourceKind == SyncSourceKinds.STORY_MANAGER && serverBookId != null && isCompleted
+
+        fun toStubBook(): BookEntity = BookEntity(
+            bookId = "recoverable://$syncId",
+            title = title.ifBlank { originalFileName ?: "Untitled" },
+            author = author,
+            syncId = syncId,
+            syncSourceKind = sourceKind,
+            syncSourceUrl = sourceUrl,
+            originalFileName = originalFileName,
+            totalProgression = 1f,
+            hidden = false,
+            series = series,
+            sourceType = sourceType ?: "web",
+            serverBookId = serverBookId,
+            seriesIndex = seriesIndex
+        )
+    }
 }

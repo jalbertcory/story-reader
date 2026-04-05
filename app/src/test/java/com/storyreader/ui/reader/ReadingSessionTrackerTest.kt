@@ -430,5 +430,6 @@ class ReadingSessionTrackerTest {
         override suspend fun updateChapterPosition(bookId: String, title: String?, progression: Float?) {
             chapterUpdates.add(ChapterUpdate(bookId, title, progression))
         }
+        override suspend fun resetBookProgress(bookId: String, restartAt: Long) = Unit
     }
 }

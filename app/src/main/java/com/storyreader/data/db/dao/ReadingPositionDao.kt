@@ -28,4 +28,7 @@ interface ReadingPositionDao {
         ) latest ON rp.bookId = latest.bookId AND rp.timestamp = latest.maxTs
     """)
     suspend fun getLatestPositionPerBook(): List<ReadingPositionEntity>
+
+    @Query("DELETE FROM reading_positions WHERE bookId = :bookId")
+    suspend fun deleteForBook(bookId: String)
 }

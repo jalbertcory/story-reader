@@ -25,5 +25,6 @@ data class BookEntity(
     val lastSyncedAt: Long? = null,
     val lastChapterTitle: String? = null,
     val lastChapterProgression: Float? = null,
-    val seriesIndex: Float? = null
+    val seriesIndex: Float? = null,
+    val restartAt: Long? = null
 )

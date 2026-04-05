@@ -50,7 +50,13 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
     open val epubRepository: EpubRepository by lazy { EpubRepository(this) }
 
     open val bookRepository: BookRepository by lazy {
-        BookRepositoryImpl(this, database.bookDao(), epubRepository)
+        BookRepositoryImpl(
+            this,
+            database.bookDao(),
+            database.readingPositionDao(),
+            database.readingSessionDao(),
+            epubRepository
+        )
     }
 
     open val readingRepository: ReadingRepository by lazy {
@@ -93,6 +99,7 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
         StoryManagerRepository(
             apiClient = storyManagerApiClient,
             bookDao = database.bookDao(),
+            bookRepository = bookRepository,
             epubRepository = epubRepository,
             downloadDir = java.io.File(filesDir, "story_manager_downloads"),
             coversDir = java.io.File(filesDir, "covers")
@@ -185,6 +192,7 @@ open class StoryReaderApplication : Application(), Configuration.Provider {
         CoroutineScope(Dispatchers.IO).launch {
             val cutoff = System.currentTimeMillis() - 60_000L // older than 1 minute
             database.readingSessionDao().deleteOrphanedSessions(cutoff)
+            storyManagerRepository.pruneCompletedRecoverableBooks()
         }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
