@@ -19,7 +19,7 @@ A full-featured Android e-reader for EPUB books with text-to-speech, reading sta
 - Android Auto integration — browse your library and start TTS playback from your car
 
 ### Library Management
-- Import EPUBs from device storage, Google Drive, or Nextcloud
+- Import EPUBs from Android's file picker, including providers like Google Drive, or browse remote catalogs such as Nextcloud
 - Cover art extraction and display
 - Long-press any book for detailed stats, session history, metadata, and the option to remove it from the library (reading stats are preserved)
 
@@ -34,6 +34,7 @@ A full-featured Android e-reader for EPUB books with text-to-speech, reading sta
 
 ### Sync
 - Cross-device reading progress sync via Nextcloud WebDAV
+- Optional Google Drive app-data backup for reading progress sync
 - Automatic background sync on Wi-Fi (hourly via WorkManager)
 - Credentials encrypted with AES-256-GCM via Android Keystore
 
@@ -128,3 +129,11 @@ GitHub Actions runs lint, unit tests, and a debug build on every push and pull r
 3. Reading progress is synced automatically in the background when on Wi-Fi.
 
 Credentials are encrypted with AES-256-GCM and stored in Android Keystore — they never leave the device in plaintext.
+
+## Google Drive sync setup
+
+1. Open the app and navigate to **Settings** from the library screen.
+2. Connect Google Drive under **Sync Providers**.
+3. The app stores sync backups in your app-specific Google Drive data area.
+
+To import an EPUB from Google Drive, use the library import button and pick the file through Android's system document picker.

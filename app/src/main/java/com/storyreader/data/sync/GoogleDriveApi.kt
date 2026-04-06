@@ -18,20 +18,6 @@ class GoogleDriveApi(
     private val httpClient: OkHttpClient = OkHttpClient()
 ) {
 
-    fun listFolder(
-        accessToken: String,
-        folderId: String
-    ): Result<List<GoogleDriveItem>> = runCatching {
-        val url = "${DRIVE_API_BASE}/files".toHttpUrl().newBuilder()
-            .addQueryParameter("q", buildFolderQuery(folderId))
-            .addQueryParameter("fields", "files(id,name,mimeType,size)")
-            .addQueryParameter("orderBy", "folder,name_natural")
-            .addQueryParameter("pageSize", "200")
-            .build()
-        val response = executeJsonRequest(url, accessToken)
-        response.getJSONArray("files").toGoogleDriveItems()
-    }
-
     fun downloadFile(
         accessToken: String,
         fileId: String,
@@ -119,22 +105,6 @@ class GoogleDriveApi(
         }
     }
 
-    suspend fun listEpubsRecursively(
-        accessToken: String,
-        folderId: String
-    ): Result<List<GoogleDriveItem>> = runCatching {
-        val items = listFolder(accessToken, folderId).getOrThrow()
-        val epubs = mutableListOf<GoogleDriveItem>()
-        for (item in items) {
-            if (item.isFolder) {
-                epubs += listEpubsRecursively(accessToken, item.id).getOrThrow()
-            } else {
-                epubs += item
-            }
-        }
-        epubs
-    }
-
     private fun executeJsonRequest(url: okhttp3.HttpUrl, accessToken: String): JSONObject {
         val request = Request.Builder()
             .url(url)
@@ -149,33 +119,6 @@ class GoogleDriveApi(
             }
             return JSONObject(response.body?.string().orEmpty())
         }
-    }
-
-    private fun JSONArray.toGoogleDriveItems(): List<GoogleDriveItem> {
-        val items = mutableListOf<GoogleDriveItem>()
-        for (i in 0 until length()) {
-            val file = getJSONObject(i)
-            val mimeType = file.getString("mimeType")
-            val name = file.getString("name")
-            val isFolder = mimeType == FOLDER_MIME_TYPE
-            if (!isFolder && !name.lowercase().endsWith(".epub") && mimeType != EPUB_MIME_TYPE) {
-                continue
-            }
-            items += GoogleDriveItem(
-                id = file.getString("id"),
-                name = name,
-                isFolder = isFolder,
-                size = file.optLong("size", 0L)
-            )
-        }
-        return items.sortedWith(compareByDescending<GoogleDriveItem> { it.isFolder }.thenBy { it.name.lowercase() })
-    }
-
-    private fun buildFolderQuery(folderId: String): String {
-        return "'$folderId' in parents and trashed = false and (" +
-            "mimeType = '$FOLDER_MIME_TYPE' or " +
-            "mimeType = '$EPUB_MIME_TYPE' or " +
-            "name contains '.epub')"
     }
 
     private fun createSyncFile(accessToken: String, fileName: String, payload: JSONObject) {
@@ -227,7 +170,5 @@ class GoogleDriveApi(
         private const val TAG = "GoogleDriveApi"
         private const val DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
         private const val DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3"
-        private const val FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
-        private const val EPUB_MIME_TYPE = "application/epub+zip"
     }
 }

@@ -267,14 +267,13 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `default import sources include device google drive and opds`() = runTest {
+    fun `default import sources include files and opds`() = runTest {
         val vm = createViewModel()
         waitForEmission()
         advanceUntilIdle()
 
         val sources = vm.uiState.value.importSources
         assertTrue(sources.contains(BookImportSource.DEVICE))
-        assertTrue(sources.contains(BookImportSource.GOOGLE_DRIVE))
         assertTrue(sources.contains(BookImportSource.OPDS))
     }
 
