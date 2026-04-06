@@ -114,7 +114,6 @@ class GoogleDriveAuthManager(
     }
 
     companion object {
-        const val DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
         const val DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
         private const val EMAIL_SCOPE = "email"
         private const val PROFILE_SCOPE = "profile"
@@ -122,7 +121,6 @@ class GoogleDriveAuthManager(
         private const val GOOGLE_ACCOUNT_TYPE = "com.google"
 
         val GOOGLE_DRIVE_SCOPES = listOf(
-            DRIVE_READONLY_SCOPE,
             DRIVE_APPDATA_SCOPE,
             EMAIL_SCOPE,
             PROFILE_SCOPE,

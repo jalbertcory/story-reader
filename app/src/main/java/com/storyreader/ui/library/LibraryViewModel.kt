@@ -23,8 +23,7 @@ enum class BookImportSource(
     val label: String,
     val requiresCloudDivider: Boolean = false
 ) {
-    DEVICE("From Device"),
-    GOOGLE_DRIVE("From Google Drive"),
+    DEVICE("From Files"),
     OPDS("From OPDS Catalog"),
     NEXTCLOUD("From Nextcloud", requiresCloudDivider = true),
     STORY_MANAGER("From Story Manager", requiresCloudDivider = true)
@@ -55,7 +54,6 @@ data class LibraryUiState(
     val hasNextcloudCredentials: Boolean = false,
     val importSources: List<BookImportSource> = listOf(
         BookImportSource.DEVICE,
-        BookImportSource.GOOGLE_DRIVE,
         BookImportSource.OPDS
     ),
     val selectedTab: Int = 0,
@@ -275,7 +273,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         val isStoryManager = app.opdsCredentialsManager.isStoryManagerBackend
         return buildList {
             add(BookImportSource.DEVICE)
-            add(BookImportSource.GOOGLE_DRIVE)
             if (!isStoryManager) {
                 add(BookImportSource.OPDS)
             }

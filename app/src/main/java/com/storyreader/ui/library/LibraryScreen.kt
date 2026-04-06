@@ -101,7 +101,6 @@ fun LibraryScreen(
     onBookClick: (String) -> Unit,
     onSyncSettingsClick: () -> Unit,
     onNextcloudImportClick: () -> Unit,
-    onGoogleDriveImportClick: () -> Unit,
     onOpdsImportClick: () -> Unit,
     onStatsClick: () -> Unit,
     onSeriesBrowserClick: () -> Unit = {},
@@ -200,7 +199,6 @@ fun LibraryScreen(
                                             BookImportSource.DEVICE -> {
                                                 filePickerLauncher.launch(arrayOf("application/epub+zip"))
                                             }
-                                            BookImportSource.GOOGLE_DRIVE -> onGoogleDriveImportClick()
                                             BookImportSource.OPDS -> onOpdsImportClick()
                                             BookImportSource.NEXTCLOUD -> onNextcloudImportClick()
                                             BookImportSource.STORY_MANAGER -> onSeriesBrowserClick()

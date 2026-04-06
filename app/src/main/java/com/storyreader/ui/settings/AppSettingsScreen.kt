@@ -616,7 +616,7 @@ fun AppSettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "Use Google Drive for EPUB imports and sync backups. The first connection will ask for Drive access.",
+                    "Use Google Drive for encrypted sync backups. EPUB imports from Drive can go through the Android file picker in the library import menu.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
