@@ -8,6 +8,10 @@ class GoogleDriveCredentialsManager(
     private val prefs: SharedPreferences
 ) {
 
+    var isAuthorized: Boolean
+        get() = prefs.getBoolean(KEY_IS_AUTHORIZED, false)
+        set(value) = prefs.edit { putBoolean(KEY_IS_AUTHORIZED, value) }
+
     var accountEmail: String?
         get() = prefs.getString(KEY_ACCOUNT_EMAIL, null)
         set(value) = prefs.edit { putString(KEY_ACCOUNT_EMAIL, value) }
@@ -17,7 +21,7 @@ class GoogleDriveCredentialsManager(
         set(value) = prefs.edit { putString(KEY_ACCOUNT_DISPLAY_NAME, value) }
 
     val hasAccount: Boolean
-        get() = !accountEmail.isNullOrBlank()
+        get() = isAuthorized || !accountEmail.isNullOrBlank() || !accountDisplayName.isNullOrBlank()
 
     fun displayLabel(): String? {
         val email = accountEmail
@@ -35,6 +39,7 @@ class GoogleDriveCredentialsManager(
     }
 
     companion object {
+        private const val KEY_IS_AUTHORIZED = "is_authorized"
         private const val KEY_ACCOUNT_EMAIL = "account_email"
         private const val KEY_ACCOUNT_DISPLAY_NAME = "account_display_name"
 

@@ -68,14 +68,18 @@ class GoogleDriveAuthManager(
 
     suspend fun revokeAccess(): Result<Unit> {
         return runCatching {
-            val accountEmail = credentialsManager.accountEmail
-                ?: throw IllegalStateException("No Google Drive account is connected")
-            authorizationClient.revokeAccess(
-                RevokeAccessRequest.builder()
-                    .setAccount(Account(accountEmail, GOOGLE_ACCOUNT_TYPE))
-                    .setScopes(GOOGLE_DRIVE_SCOPES.map(::Scope))
-                    .build()
-            ).await()
+            if (!credentialsManager.hasAccount) {
+                throw IllegalStateException("No Google Drive account is connected")
+            }
+            val request = RevokeAccessRequest.builder()
+                .setScopes(GOOGLE_DRIVE_SCOPES.map(::Scope))
+                .apply {
+                    credentialsManager.accountEmail?.let { accountEmail ->
+                        setAccount(Account(accountEmail, GOOGLE_ACCOUNT_TYPE))
+                    }
+                }
+                .build()
+            authorizationClient.revokeAccess(request).await()
             credentialsManager.clear()
         }
     }
@@ -101,6 +105,7 @@ class GoogleDriveAuthManager(
     }
 
     private fun persistAccount(account: GoogleDriveAccount?) {
+        credentialsManager.isAuthorized = true
         credentialsManager.accountEmail = account?.email
         credentialsManager.accountDisplayName = account?.displayName
     }
