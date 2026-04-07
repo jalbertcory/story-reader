@@ -1,0 +1,73 @@
+name: Release Bundle
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-bundle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release-bundle:
+    name: Build signed release bundle
+    runs-on: ubuntu-latest
+    env:
+      CI_VERSION_CODE: ${{ github.run_number }}
+      CI_VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for var in ANDROID_UPLOAD_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::$var is not set"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Decode upload keystore
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          echo "$ANDROID_UPLOAD_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/story-reader-upload.jks"
+
+      - name: Build signed release bundle
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/story-reader-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: story-reader-aab-${{ env.CI_VERSION_NAME }}
+          path: app/build/outputs/bundle/release/*.aab

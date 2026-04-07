@@ -80,6 +80,7 @@ A full-featured Android e-reader for EPUB books with text-to-speech, reading sta
 ```bash
 ./gradlew assembleDebug       # debug APK
 ./gradlew assembleRelease     # release APK (requires signing config)
+./gradlew bundleRelease       # release App Bundle (requires signing config)
 ```
 
 ## Testing
@@ -109,6 +110,25 @@ Reports are written to `app/build/reports/lint-results-*.html`.
 ## CI
 
 GitHub Actions runs lint, unit tests, and a debug build on every push and pull request to `main` or `develop`. See [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+## Signed Release Bundles In GitHub Actions
+
+The repository also includes a manual GitHub Actions workflow for building a signed release App Bundle (`.aab`) without storing signing secrets in the repo workspace.
+
+Create these repository secrets before running [`.github/workflows/release-bundle.yml`](.github/workflows/release-bundle.yml):
+
+- `ANDROID_UPLOAD_KEYSTORE_B64` — base64-encoded contents of your upload keystore
+- `ANDROID_KEYSTORE_PASSWORD` — keystore password
+- `ANDROID_KEY_ALIAS` — key alias, for example `storyreader`
+- `ANDROID_KEY_PASSWORD` — key password
+
+To create the base64 secret locally:
+
+```bash
+base64 < "$HOME/keys/story-reader-upload.jks" | tr -d '\n'
+```
+
+After adding the secrets, run the **Release Bundle** workflow from the GitHub Actions tab. The signed `.aab` artifact will be uploaded to the workflow run and can be used for Play internal testing.
 
 ## Architecture
 

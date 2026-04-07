@@ -13,6 +13,24 @@ val ciVersionCode: Provider<String> = providers
 val ciVersionName: Provider<String> = providers
     .gradleProperty("ciVersionName")
     .orElse(providers.environmentVariable("CI_VERSION_NAME"))
+val releaseSigningStoreFile: Provider<String> = providers
+    .gradleProperty("androidSigningStoreFile")
+    .orElse(providers.environmentVariable("ANDROID_KEYSTORE_PATH"))
+val releaseSigningStorePassword: Provider<String> = providers
+    .gradleProperty("androidSigningStorePassword")
+    .orElse(providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD"))
+val releaseSigningKeyAlias: Provider<String> = providers
+    .gradleProperty("androidSigningKeyAlias")
+    .orElse(providers.environmentVariable("ANDROID_KEY_ALIAS"))
+val releaseSigningKeyPassword: Provider<String> = providers
+    .gradleProperty("androidSigningKeyPassword")
+    .orElse(providers.environmentVariable("ANDROID_KEY_PASSWORD"))
+val hasReleaseSigningConfig = listOf(
+    releaseSigningStoreFile,
+    releaseSigningStorePassword,
+    releaseSigningKeyAlias,
+    releaseSigningKeyPassword
+).all { it.isPresent }
 
 android {
     namespace = "com.storyreader"
@@ -27,9 +45,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigningConfig) {
+            create("release") {
+                storeFile = file(releaseSigningStoreFile.get())
+                storePassword = releaseSigningStorePassword.get()
+                keyAlias = releaseSigningKeyAlias.get()
+                keyPassword = releaseSigningKeyPassword.get()
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
