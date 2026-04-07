@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -34,7 +35,7 @@ class GoogleDriveApi(
 
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("Google Drive download failed: ${response.code}")
+                throw response.toGoogleDriveException("Google Drive download failed")
             }
 
             response.body?.byteStream()?.use { input ->
@@ -86,7 +87,7 @@ class GoogleDriveApi(
 
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("Google Drive sync download failed: ${response.code}")
+                throw response.toGoogleDriveException("Google Drive sync download failed")
             }
             JSONObject(response.body?.string().orEmpty())
         }
@@ -115,7 +116,7 @@ class GoogleDriveApi(
 
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("Google Drive request failed: ${response.code}")
+                throw response.toGoogleDriveException("Google Drive request failed")
             }
             return JSONObject(response.body?.string().orEmpty())
         }
@@ -145,7 +146,7 @@ class GoogleDriveApi(
 
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("Google Drive sync upload failed: ${response.code}")
+                throw response.toGoogleDriveException("Google Drive sync upload failed")
             }
         }
     }
@@ -161,9 +162,34 @@ class GoogleDriveApi(
 
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("Google Drive sync update failed: ${response.code}")
+                throw response.toGoogleDriveException("Google Drive sync update failed")
             }
         }
+    }
+
+    private fun Response.toGoogleDriveException(prefix: String): IllegalStateException {
+        val rawBody = body?.string().orEmpty()
+        val apiMessage = runCatching {
+            JSONObject(rawBody)
+                .optJSONObject("error")
+                ?.optString("message")
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+        val message = buildString {
+            append(prefix)
+            append(": ")
+            append(code)
+            this@toGoogleDriveException.message.takeIf { it.isNotBlank() }?.let {
+                append(" ")
+                append(it)
+            }
+            apiMessage?.let {
+                append(" - ")
+                append(it)
+            }
+        }
+        Log.w(TAG, "$message body=$rawBody")
+        return IllegalStateException(message)
     }
 
     companion object {
