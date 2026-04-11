@@ -30,14 +30,20 @@ import java.io.File
 
 @Composable
 fun StoryReaderLinearProgressIndicator(
-    progress: Float,
+    progress: Float? = null,
     modifier: Modifier = Modifier
 ) {
-    LinearProgressIndicator(
-        progress = { progress },
-        modifier = modifier,
-        drawStopIndicator = {}
-    )
+    if (progress != null) {
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = modifier,
+            drawStopIndicator = {}
+        )
+    } else {
+        LinearProgressIndicator(
+            modifier = modifier
+        )
+    }
 }
 
 @Composable
