@@ -156,4 +156,6 @@ Credentials are encrypted with AES-256-GCM and stored in Android Keystore — th
 2. Connect Google Drive under **Sync Providers**.
 3. The app stores sync backups in your app-specific Google Drive data area.
 
+Story Reader does not add its own end-to-end encryption layer to the backup JSON stored there.
+
 To import an EPUB from Google Drive, use the library import button and pick the file through Android's system document picker.

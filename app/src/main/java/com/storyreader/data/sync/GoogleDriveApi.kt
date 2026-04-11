@@ -188,7 +188,7 @@ class GoogleDriveApi(
                 append(it)
             }
         }
-        Log.w(TAG, "$message body=$rawBody")
+        Log.w(TAG, message)
         return IllegalStateException(message)
     }
 

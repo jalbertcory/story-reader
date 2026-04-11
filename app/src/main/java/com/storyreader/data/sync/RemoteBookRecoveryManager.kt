@@ -13,6 +13,8 @@ import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Credentials
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONObject
 import java.io.File
 
@@ -143,13 +145,11 @@ class RemoteBookRecoveryManager(
     private fun downloadHttpSource(sourceUrl: String, destination: File) {
         val credentials = opdsCredentialsManager.currentCredentials()
             ?: throw IllegalStateException("OPDS credentials are not configured for recovery")
-        val resolvedUrl = if (sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")) {
-            BookSyncMetadata.normalizeRemoteUrl(sourceUrl)
-        } else {
-            BookSyncMetadata.normalizeRemoteUrl(
-                credentials.baseUrl.trimEnd('/') + "/" + sourceUrl.trimStart('/')
-            )
-        } ?: throw IllegalStateException("Recovery source URL could not be normalized")
+        val resolvedUrl = resolveRecoveryUrl(
+            configuredBaseUrl = credentials.baseUrl,
+            sourceUrl = sourceUrl,
+            providerName = "OPDS"
+        )
         val request = Request.Builder()
             .url(resolvedUrl)
             .get()
@@ -176,8 +176,13 @@ class RemoteBookRecoveryManager(
             ?: throw IllegalStateException("Nextcloud username is not configured")
         val password = syncCredentialsManager.appPassword
             ?: throw IllegalStateException("Nextcloud app password is not configured")
-        val normalizedUrl = BookSyncMetadata.normalizeRemoteUrl(sourceUrl)
-            ?: throw IllegalStateException("Nextcloud source URL could not be normalized")
+        val configuredServerUrl = syncCredentialsManager.serverUrl
+            ?: throw IllegalStateException("Nextcloud server URL is not configured")
+        val normalizedUrl = resolveRecoveryUrl(
+            configuredBaseUrl = configuredServerUrl,
+            sourceUrl = sourceUrl,
+            providerName = "Nextcloud"
+        )
         val request = Request.Builder()
             .url(normalizedUrl)
             .header("Authorization", Credentials.basic(username, password))
@@ -202,6 +207,37 @@ class RemoteBookRecoveryManager(
             ?: "book.epub"
         return "${book.syncId}_$original"
     }
+
+    private fun resolveRecoveryUrl(
+        configuredBaseUrl: String,
+        sourceUrl: String,
+        providerName: String
+    ): String {
+        val configuredUrl = BookSyncMetadata.normalizeRemoteUrl(configuredBaseUrl)
+            ?.toHttpUrlOrNull()
+            ?: throw IllegalStateException("$providerName server URL is invalid")
+        val resolvedUrl = when {
+            sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://") ->
+                BookSyncMetadata.normalizeRemoteUrl(sourceUrl)?.toHttpUrlOrNull()
+
+            sourceUrl.startsWith("/") ->
+                configuredUrl.resolve(sourceUrl)
+
+            else ->
+                "${configuredUrl.toString().trimEnd('/')}/${sourceUrl.trimStart('/')}".toHttpUrlOrNull()
+        } ?: throw IllegalStateException("$providerName source URL could not be normalized")
+
+        if (!sameOrigin(configuredUrl, resolvedUrl)) {
+            throw IllegalStateException("$providerName recovery URL must match the configured server")
+        }
+
+        return resolvedUrl.toString()
+    }
+
+    private fun sameOrigin(configuredUrl: HttpUrl, candidateUrl: HttpUrl): Boolean =
+        configuredUrl.scheme == candidateUrl.scheme &&
+            configuredUrl.host.equals(candidateUrl.host, ignoreCase = true) &&
+            configuredUrl.port == candidateUrl.port
 
     private fun parseRecoverableBooks(remoteJson: JSONObject): List<RecoverableRemoteBook> {
         val books = remoteJson.optJSONArray("books") ?: return emptyList()
