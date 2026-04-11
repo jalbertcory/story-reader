@@ -12,6 +12,7 @@ import com.storyreader.data.sync.SyncSourceKinds
 import com.storyreader.reader.epub.EpubRepository
 import org.readium.r2.shared.publication.services.cover
 import android.util.Log
+import com.storyreader.util.DebugLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -57,10 +58,6 @@ class StoryManagerRepository(
         // Use the file URI as bookId so the reader can open it.
         // On re-import (update), delete the old entity if the file path changed,
         // then insert with the new path while preserving reading progress.
-        if (existing != null && existing.bookId != fileUri.toString()) {
-            bookDao.delete(existing)
-        }
-
         val entity = BookEntity(
             bookId = fileUri.toString(),
             title = serverBook.title,
@@ -85,7 +82,11 @@ class StoryManagerRepository(
             lastChapterProgression = existing?.lastChapterProgression,
             restartAt = existing?.restartAt
         )
-        bookDao.insert(entity)
+        if (existing != null && existing.bookId != fileUri.toString()) {
+            bookDao.replaceBook(existing, entity)
+        } else {
+            bookDao.insert(entity)
+        }
         if (entity.shouldDeleteCompletedLocalFile()) {
             deleteLocalBookFile(entity)
         }
@@ -112,7 +113,7 @@ class StoryManagerRepository(
         val existingServerIds = bookDao.getAllServerBookIds().toSet()
         val localSeriesNames = bookDao.getLocalSeriesNames().toSet()
         val allLocalBooks = bookDao.getAllOnce()
-        Log.d(TAG, "checkForNewBooks: ${allServerBooks.size} server books, ${localSeriesNames.size} local series, ${allLocalBooks.size} local books")
+        DebugLog.d(TAG) { "checkForNewBooks: ${allServerBooks.size} server books, ${localSeriesNames.size} local series, ${allLocalBooks.size} local books" }
 
         // Index local books by title+author for duplicate detection
         val localByTitleAuthor = allLocalBooks.associateBy {
@@ -144,7 +145,7 @@ class StoryManagerRepository(
 
             if (localMatch != null) {
                 // Book exists locally but wasn't linked to the server — backfill
-                Log.d(TAG, "checkForNewBooks: linking '${localMatch.title}' to serverBookId=${serverBook.id}")
+                DebugLog.d(TAG) { "checkForNewBooks: linking '${localMatch.title}' to serverBookId=${serverBook.id}" }
                 bookDao.updateServerBookId(localMatch.bookId, serverBook.id)
                 if (localMatch.series == null && serverBook.series != null) {
                     bookDao.updateSeries(localMatch.bookId, serverBook.series)
@@ -154,7 +155,7 @@ class StoryManagerRepository(
             }
 
             if (serverBook.series == null || serverBook.series !in localSeriesNames) continue
-            Log.d(TAG, "checkForNewBooks: new book '${serverBook.title}' in series '${serverBook.series}'")
+            DebugLog.d(TAG) { "checkForNewBooks: new book '${serverBook.title}' in series '${serverBook.series}'" }
             importSingleBook(serverBook)
                 .onFailure { e -> Log.w(TAG, "Failed to import '${serverBook.title}'", e) }
                 .getOrNull() ?: continue
@@ -173,7 +174,7 @@ class StoryManagerRepository(
                     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     saveCover(bitmap)?.let { path ->
                         bookDao.updateCoverUri(book.bookId, path)
-                        Log.d(TAG, "checkForNewBooks: backfilled cover for '${book.title}'")
+                        DebugLog.d(TAG) { "checkForNewBooks: backfilled cover for '${book.title}'" }
                     }
                 }.onFailure { e ->
                     Log.w(TAG, "Failed to backfill cover for '${book.title}'", e)
@@ -181,19 +182,19 @@ class StoryManagerRepository(
             }
         }
 
-        Log.d(TAG, "checkForNewBooks: imported ${importedTitles.size} new books")
+        DebugLog.d(TAG) { "checkForNewBooks: imported ${importedTitles.size} new books" }
         importedTitles
     } }
 
     suspend fun checkForUpdates(): Result<Int> = withContext(Dispatchers.IO) { runCatching {
         val webBooks = bookDao.getWebBooksForSync()
-        Log.d(TAG, "checkForUpdates: ${webBooks.size} web books")
+        DebugLog.d(TAG) { "checkForUpdates: ${webBooks.size} web books" }
         if (webBooks.isEmpty()) return@runCatching 0
 
         val maxSynced = webBooks.mapNotNull { it.lastSyncedAt }.maxOrNull()
-        Log.d(TAG, "checkForUpdates: maxSynced=$maxSynced (${maxSynced?.let { Instant.ofEpochMilli(it) }})")
+        DebugLog.d(TAG) { "checkForUpdates: maxSynced=$maxSynced (${maxSynced?.let { Instant.ofEpochMilli(it) }})" }
         val serverUpdates = apiClient.fetchUpdates(maxSynced).getOrThrow()
-        Log.d(TAG, "checkForUpdates: server returned ${serverUpdates.size} updates")
+        DebugLog.d(TAG) { "checkForUpdates: server returned ${serverUpdates.size} updates" }
 
         val localByServerId = webBooks.associateBy { it.serverBookId }
         var updatedCount = 0
@@ -201,18 +202,18 @@ class StoryManagerRepository(
         for (serverBook in serverUpdates) {
             val local = localByServerId[serverBook.id]
             if (local == null) {
-                Log.d(TAG, "checkForUpdates: serverBookId=${serverBook.id} '${serverBook.title}' not in local DB, skipping")
+                DebugLog.d(TAG) { "checkForUpdates: serverBookId=${serverBook.id} '${serverBook.title}' not in local DB, skipping" }
                 continue
             }
             val localVersion = local.contentVersion ?: 0
-            Log.d(TAG, "checkForUpdates: '${serverBook.title}' serverVersion=${serverBook.contentVersion} localVersion=$localVersion")
+            DebugLog.d(TAG) { "checkForUpdates: '${serverBook.title}' serverVersion=${serverBook.contentVersion} localVersion=$localVersion" }
             if (serverBook.contentVersion > localVersion) {
-                Log.d(TAG, "checkForUpdates: updating '${serverBook.title}'")
+                DebugLog.d(TAG) { "checkForUpdates: updating '${serverBook.title}'" }
                 importSingleBook(serverBook).getOrThrow()
                 updatedCount++
             }
         }
-        Log.d(TAG, "checkForUpdates: updated $updatedCount books")
+        DebugLog.d(TAG) { "checkForUpdates: updated $updatedCount books" }
         updatedCount
     } }
 

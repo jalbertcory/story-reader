@@ -3,6 +3,7 @@ package com.storyreader.data.sync
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.storyreader.util.DebugLog
 import com.storyreader.data.catalog.OpdsCredentialsManager
 import com.storyreader.data.db.dao.BookDao
 import com.storyreader.data.db.entity.BookEntity
@@ -69,7 +70,7 @@ class RemoteBookRecoveryManager(
 
             if (remoteBook.sourceKind == null || remoteBook.sourceUrl == null) {
                 skipped++
-                Log.d(TAG, "Skipping recovery for ${remoteBook.syncId}: missing source metadata")
+                DebugLog.d(TAG) { "Skipping recovery for ${remoteBook.syncId}: missing source metadata" }
                 return@forEach
             }
 

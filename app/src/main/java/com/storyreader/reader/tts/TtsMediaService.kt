@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import com.storyreader.util.DebugLog
 import androidx.core.net.toUri
 import androidx.annotation.OptIn
 import androidx.media3.common.ForwardingPlayer
@@ -195,13 +196,13 @@ class TtsMediaService : MediaLibraryService() {
             val bookId = mediaItems.firstOrNull()?.mediaId
                 ?: return Futures.immediateFailedFuture(IllegalArgumentException("No book"))
 
-            Log.d(TAG, "onSetMediaItems: bookId=$bookId, current=$standaloneBookId")
+            DebugLog.d(TAG) { "onSetMediaItems: bookId=$bookId, current=$standaloneBookId" }
 
             // If the phone UI has this book open, let the ViewModel handle TTS
             // (gives highlight sync, visual page-turning, unified position tracking).
             val handled = binder.ttsPlaybackRequestListener?.onTtsPlaybackRequested(bookId) == true
             if (handled) {
-                Log.d(TAG, "onSetMediaItems: delegated to ViewModel")
+                DebugLog.d(TAG) { "onSetMediaItems: delegated to ViewModel" }
                 return Futures.immediateFuture(
                     MediaSession.MediaItemsWithStartPosition(
                         mediaItems, startIndex, startPositionMs
@@ -231,7 +232,7 @@ class TtsMediaService : MediaLibraryService() {
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            Log.d(TAG, "onPlaybackResumption: current=$standaloneBookId")
+            DebugLog.d(TAG) { "onPlaybackResumption: current=$standaloneBookId" }
             // When AA resumes after a pause, re-start the last book if we have one
             val bookId = standaloneBookId
             if (bookId != null && standaloneTtsNavigator != null) {
@@ -406,7 +407,7 @@ class TtsMediaService : MediaLibraryService() {
 
     @OptIn(UnstableApi::class)
     private suspend fun startStandalonePlayback(bookId: String) {
-        Log.d(TAG, "startStandalonePlayback: bookId=$bookId")
+        DebugLog.d(TAG) { "startStandalonePlayback: bookId=$bookId" }
         val app = application as StoryReaderApplication
         val uri = bookId.toUri()
         val publication = app.epubRepository.openPublication(uri).getOrNull() ?: return
@@ -468,7 +469,7 @@ class TtsMediaService : MediaLibraryService() {
     }
 
     private fun cleanupStandalonePlayback() {
-        Log.d(TAG, "cleanupStandalonePlayback: bookId=$standaloneBookId, hasNav=${standaloneTtsNavigator != null}")
+        DebugLog.d(TAG) { "cleanupStandalonePlayback: bookId=$standaloneBookId, hasNav=${standaloneTtsNavigator != null}" }
         standaloneStartupJob?.cancel()
         standaloneStartupJob = null
         standaloneLocationJob?.cancel()
@@ -643,7 +644,9 @@ class TtsMediaService : MediaLibraryService() {
         }
         const val ACTION_BIND = "com.storyreader.reader.tts.TtsMediaService"
 
-        suspend fun bind(application: Application): LocalBinder? {
+        data class BindResult(val binder: LocalBinder, val connection: ServiceConnection)
+
+        suspend fun bind(application: Application): BindResult? {
             val deferred = kotlinx.coroutines.CompletableDeferred<LocalBinder?>()
             val connection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName, service: IBinder) {
@@ -657,7 +660,12 @@ class TtsMediaService : MediaLibraryService() {
             val intent = Intent(ACTION_BIND).setClass(application, TtsMediaService::class.java)
             application.startService(intent)
             application.bindService(intent, connection, BIND_AUTO_CREATE)
-            return deferred.await()
+            val binder = kotlinx.coroutines.withTimeoutOrNull(5_000L) { deferred.await() }
+            if (binder == null) {
+                runCatching { application.unbindService(connection) }
+                return null
+            }
+            return BindResult(binder, connection)
         }
     }
 }

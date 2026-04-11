@@ -16,7 +16,7 @@ import com.storyreader.data.db.entity.ReadingSessionEntity
 @Database(
     entities = [BookEntity::class, ReadingPositionEntity::class, ReadingSessionEntity::class],
     version = 10,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao

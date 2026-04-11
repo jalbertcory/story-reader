@@ -11,3 +11,5 @@ local.properties
 app/build/
 .env
 keystore.properties
+*.jks
+*.keystore

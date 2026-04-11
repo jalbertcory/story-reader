@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.storyreader.data.db.entity.BookEntity
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,12 @@ interface BookDao {
 
     @Delete
     suspend fun delete(book: BookEntity)
+
+    @Transaction
+    suspend fun replaceBook(old: BookEntity, new: BookEntity) {
+        delete(old)
+        insert(new)
+    }
 
     @Query("UPDATE books SET totalProgression = :progression WHERE bookId = :bookId")
     suspend fun updateProgression(bookId: String, progression: Float)
