@@ -11,7 +11,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatAlignJustify
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -24,6 +27,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -40,6 +45,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.storyreader.reader.tts.TtsRegexRule
+import com.storyreader.reader.tts.TtsTextFilter
 import com.storyreader.ui.components.SelectableSettingTile
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Theme
@@ -322,6 +329,7 @@ fun TtsSettingsSheet(
     onTtsPitchChange: (Float) -> Unit,
     onTtsVoiceSelected: (String?) -> Unit,
     onTtsEngineSelected: (String?) -> Unit,
+    onTextFilterChange: (TtsTextFilter) -> Unit,
     onOpenSystemTtsSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -389,9 +397,175 @@ fun TtsSettingsSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            HorizontalDivider()
+
+            TtsTextFilterSection(
+                filter = ttsSettings.textFilter,
+                onFilterChange = onTextFilterChange
+            )
+
             TextButton(onClick = onOpenSystemTtsSettings) {
                 Text("Open Android TTS settings")
             }
+        }
+    }
+}
+
+@Composable
+private fun TtsTextFilterSection(
+    filter: TtsTextFilter,
+    onFilterChange: (TtsTextFilter) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Text Filters", style = MaterialTheme.typography.labelLarge)
+        Text(
+            "Strip characters or patterns from text before it is spoken. Word-level highlighting may be slightly offset when filters are active.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        FilterCheckbox("Angle brackets < >", filter.stripAngleBrackets) {
+            onFilterChange(filter.copy(stripAngleBrackets = it))
+        }
+        FilterCheckbox("Square brackets [ ]", filter.stripSquareBrackets) {
+            onFilterChange(filter.copy(stripSquareBrackets = it))
+        }
+        FilterCheckbox("Curly braces { }", filter.stripCurlyBraces) {
+            onFilterChange(filter.copy(stripCurlyBraces = it))
+        }
+        FilterCheckbox("Parentheses ( )", filter.stripParentheses) {
+            onFilterChange(filter.copy(stripParentheses = it))
+        }
+        FilterCheckbox("Asterisks *", filter.stripAsterisks) {
+            onFilterChange(filter.copy(stripAsterisks = it))
+        }
+        FilterCheckbox("Underscores _", filter.stripUnderscores) {
+            onFilterChange(filter.copy(stripUnderscores = it))
+        }
+        FilterCheckbox("Hashes #", filter.stripHashes) {
+            onFilterChange(filter.copy(stripHashes = it))
+        }
+        FilterCheckbox("URLs", filter.stripUrls) {
+            onFilterChange(filter.copy(stripUrls = it))
+        }
+
+        // Custom regex rules
+        Column(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Custom Replacements", style = MaterialTheme.typography.labelMedium)
+                IconButton(
+                    onClick = {
+                        onFilterChange(
+                            filter.copy(
+                                customRules = filter.customRules + TtsRegexRule("", "")
+                            )
+                        )
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Add rule",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            filter.customRules.forEachIndexed { index, rule ->
+                CustomRuleRow(
+                    rule = rule,
+                    onUpdate = { updated ->
+                        onFilterChange(
+                            filter.copy(
+                                customRules = filter.customRules.toMutableList().apply {
+                                    set(index, updated)
+                                }
+                            )
+                        )
+                    },
+                    onRemove = {
+                        onFilterChange(
+                            filter.copy(
+                                customRules = filter.customRules.toMutableList().apply {
+                                    removeAt(index)
+                                }
+                            )
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterCheckbox(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(start = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun CustomRuleRow(
+    rule: TtsRegexRule,
+    onUpdate: (TtsRegexRule) -> Unit,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = rule.enabled,
+            onCheckedChange = { onUpdate(rule.copy(enabled = it)) },
+            modifier = Modifier.size(32.dp)
+        )
+        OutlinedTextField(
+            value = rule.pattern,
+            onValueChange = { onUpdate(rule.copy(pattern = it)) },
+            label = { Text("Pattern") },
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedTextField(
+            value = rule.replacement,
+            onValueChange = { onUpdate(rule.copy(replacement = it)) },
+            label = { Text("Replace") },
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Remove rule",
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }

@@ -12,6 +12,7 @@ import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.readium.navigator.media.tts.TtsEngine
 import org.readium.navigator.media.tts.TtsEngineProvider
 import org.readium.navigator.media.tts.android.AndroidTtsDefaults
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
@@ -132,6 +133,7 @@ class TtsCatalog(private val context: Context) {
 class StoryReaderAndroidTtsEngineProvider(
     private val context: Context,
     private val enginePackageName: String?,
+    private val textFilter: TtsTextFilter = TtsTextFilter(),
     private val defaults: AndroidTtsDefaults = AndroidTtsDefaults(),
     private val voiceSelector: AndroidTtsEngine.VoiceSelector = AndroidTtsEngine.VoiceSelector { _, _ -> null }
 ) : TtsEngineProvider<
@@ -145,7 +147,7 @@ class StoryReaderAndroidTtsEngineProvider(
     override suspend fun createEngine(
         publication: Publication,
         initialPreferences: AndroidTtsPreferences
-    ): Try<AndroidTtsEngine, org.readium.r2.shared.util.Error> {
+    ): Try<TtsEngine<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>, org.readium.r2.shared.util.Error> {
         val settingsResolver = AndroidTtsEngine.SettingsResolver { preferences ->
             val language = preferences.language
                 ?: publication.metadata.language
@@ -188,6 +190,13 @@ class StoryReaderAndroidTtsEngineProvider(
             null
         } ?: return Try.failure(DebugError("Failed to create Android Tts engine."))
 
+        val replacements = textFilter.buildReplacements()
+        Log.d(TAG, "createEngine: filter=$textFilter, replacementCount=${replacements.size}")
+        if (replacements.isNotEmpty()) {
+            Log.d(TAG, "createEngine: wrapping engine with ${replacements.size} replacement(s)")
+            return Try.success(SubstitutingTtsEngine(engine, replacements))
+        }
+        Log.d(TAG, "createEngine: no filters active, using raw engine")
         return Try.success(engine)
     }
 

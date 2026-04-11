@@ -9,6 +9,8 @@ import androidx.media3.common.MediaMetadata
 import com.storyreader.data.sync.KEY_SYNC_TTS_UPDATED_AT
 import com.storyreader.data.sync.KEY_TTS_ENGINE
 import com.storyreader.data.sync.KEY_TTS_PREFS
+import com.storyreader.data.sync.KEY_TTS_TEXT_FILTER
+import com.storyreader.reader.tts.TtsTextFilter
 import com.storyreader.reader.tts.TtsCatalog
 import com.storyreader.reader.tts.TtsHighlightSynchronizer
 import com.storyreader.reader.tts.TtsManager
@@ -294,19 +296,21 @@ class ReaderTtsController(
 
     private val _ttsPreferences = MutableStateFlow(loadSavedTtsPreferences())
     private var selectedTtsEnginePackageName: String? = prefStore.getString(KEY_TTS_ENGINE, null)
+    private var _textFilter = MutableStateFlow(loadSavedTextFilter())
 
     private val _ttsSettings = MutableStateFlow(
         TtsSettingsUiState(
             speed = (_ttsPreferences.value.speed ?: DEFAULT_TTS_SPEED).toFloat(),
             pitch = (_ttsPreferences.value.pitch ?: 1.0).toFloat(),
             enginePackageName = selectedTtsEnginePackageName,
-            selectedVoiceId = selectedVoiceFor(currentTtsLanguage())
+            selectedVoiceId = selectedVoiceFor(currentTtsLanguage()),
+            textFilter = _textFilter.value
         )
     )
     val ttsSettings: StateFlow<TtsSettingsUiState> = _ttsSettings.asStateFlow()
 
     fun initialize(publication: Publication) {
-        ttsManager.initialize(publication, selectedTtsEnginePackageName)
+        ttsManager.initialize(publication, selectedTtsEnginePackageName, _textFilter.value)
         refreshTtsCatalog()
     }
 
@@ -494,9 +498,19 @@ class ReaderTtsController(
             stopTts()
         }
         delegate.publication?.let { publication ->
-            ttsManager.initialize(publication, selectedTtsEnginePackageName)
+            ttsManager.initialize(publication, selectedTtsEnginePackageName, _textFilter.value)
         }
         refreshTtsCatalog()
+    }
+
+    fun updateTextFilter(filter: TtsTextFilter) {
+        _textFilter.value = filter
+        _ttsSettings.value = _ttsSettings.value.copy(textFilter = filter)
+        saveTextFilter()
+        // Reinitialize the engine so the new filter takes effect on next playback.
+        delegate.publication?.let { publication ->
+            ttsManager.initialize(publication, selectedTtsEnginePackageName, filter)
+        }
     }
 
     fun openSystemTtsSettings() {
@@ -578,6 +592,16 @@ class ReaderTtsController(
         prefStore.edit {
             putString(KEY_TTS_PREFS, ttsPreferencesSerializer.serialize(_ttsPreferences.value))
             putString(KEY_TTS_ENGINE, selectedTtsEnginePackageName)
+            putLong(KEY_SYNC_TTS_UPDATED_AT, System.currentTimeMillis())
+        }
+    }
+
+    private fun loadSavedTextFilter(): TtsTextFilter =
+        TtsTextFilter.fromJsonString(prefStore.getString(KEY_TTS_TEXT_FILTER, null))
+
+    private fun saveTextFilter() {
+        prefStore.edit {
+            putString(KEY_TTS_TEXT_FILTER, _textFilter.value.toJson().toString())
             putLong(KEY_SYNC_TTS_UPDATED_AT, System.currentTimeMillis())
         }
     }

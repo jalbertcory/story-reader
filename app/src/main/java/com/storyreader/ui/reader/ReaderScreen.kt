@@ -467,6 +467,7 @@ fun ReaderScreen(
                 onTtsPitchChange = viewModel::updateTtsPitch,
                 onTtsVoiceSelected = viewModel::selectTtsVoice,
                 onTtsEngineSelected = viewModel::selectTtsEngine,
+                onTextFilterChange = viewModel::updateTextFilter,
                 onOpenSystemTtsSettings = viewModel::openSystemTtsSettings,
                 onDismiss = { showTtsSettings = false }
             )

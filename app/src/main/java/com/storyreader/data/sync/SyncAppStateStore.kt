@@ -17,6 +17,7 @@ internal const val KEY_TEXT_ALIGN = "text_align"
 internal const val KEY_BRIGHTNESS_LEVEL = "brightness_level"
 internal const val KEY_TTS_PREFS = "tts_prefs_json"
 internal const val KEY_TTS_ENGINE = "tts_engine"
+internal const val KEY_TTS_TEXT_FILTER = "tts_text_filter_json"
 internal const val KEY_GOAL_HOURS = "goal_hours_per_year"
 internal const val KEY_GOAL_WORDS = "goal_words_per_year"
 
