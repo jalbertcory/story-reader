@@ -1,6 +1,7 @@
 package com.storyreader.reader.tts
 
 import android.app.Application
+import android.util.Log
 import androidx.media3.common.MediaMetadata
 import org.readium.navigator.media.common.MediaMetadataFactory
 import org.readium.navigator.media.common.MediaMetadataProvider
@@ -22,13 +23,23 @@ class TtsManager(private val application: Application) {
     private var ttsNavigator: TtsNavigator<AndroidTtsSettings, AndroidTtsPreferences, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? = null
     private var factory: TtsNavigatorFactory<AndroidTtsSettings, AndroidTtsPreferences, *, AndroidTtsEngine.Error, AndroidTtsEngine.Voice>? = null
 
-    fun initialize(publication: Publication, enginePackageName: String?): Boolean {
+    fun initialize(
+        publication: Publication,
+        enginePackageName: String?,
+        textFilter: TtsTextFilter = TtsTextFilter()
+    ): Boolean {
         return try {
+            val useCustomProvider = !enginePackageName.isNullOrBlank() || textFilter.hasAnyFilterEnabled()
+            Log.d(TAG, "initialize: enginePkg=$enginePackageName, filterActive=${textFilter.hasAnyFilterEnabled()}, useCustomProvider=$useCustomProvider, filter=$textFilter")
             val engineProvider =
-                if (enginePackageName.isNullOrBlank()) {
+                if (!useCustomProvider) {
                     AndroidTtsEngineProvider(application)
                 } else {
-                    StoryReaderAndroidTtsEngineProvider(application, enginePackageName)
+                    StoryReaderAndroidTtsEngineProvider(
+                        application,
+                        enginePackageName,
+                        textFilter
+                    )
                 }
             factory = TtsNavigatorFactory(
                 application = application,
@@ -69,6 +80,8 @@ class TtsManager(private val application: Application) {
     }
 
     companion object {
+        private const val TAG = "TtsManager"
+
         fun requestInstallVoice(context: android.content.Context) {
             AndroidTtsEngine.requestInstallVoice(context)
         }

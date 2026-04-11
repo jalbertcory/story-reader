@@ -58,7 +58,8 @@ data class TtsSettingsUiState(
     val selectedVoiceId: String? = null,
     val availableVoices: List<com.storyreader.reader.tts.TtsVoiceOption> = emptyList(),
     val languageLabel: String = java.util.Locale.getDefault().displayName,
-    val isLoadingVoices: Boolean = false
+    val isLoadingVoices: Boolean = false,
+    val textFilter: com.storyreader.reader.tts.TtsTextFilter = com.storyreader.reader.tts.TtsTextFilter()
 )
 
 data class NextBookInfo(
@@ -614,6 +615,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun updateTtsPitch(value: Float) = ttsController.updateTtsPitch(value)
     fun selectTtsVoice(voiceId: String?) = ttsController.selectTtsVoice(voiceId)
     fun selectTtsEngine(packageName: String?) = ttsController.selectTtsEngine(packageName)
+    fun updateTextFilter(filter: com.storyreader.reader.tts.TtsTextFilter) = ttsController.updateTextFilter(filter)
     fun openSystemTtsSettings() = ttsController.openSystemTtsSettings()
 
     // --- Session lifecycle ---
