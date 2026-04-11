@@ -1,6 +1,7 @@
 package com.storyreader.data.catalog
 
 import android.util.Log
+import com.storyreader.util.DebugLog
 import java.io.File
 import java.net.URLEncoder
 import okhttp3.Credentials
@@ -18,7 +19,7 @@ class OpdsCatalogRepository(
         credentials: OpdsCredentials,
         url: String = credentials.baseUrl
     ): Result<OpdsCatalogPage> = runCatching {
-        Log.d(TAG, "fetchCatalog url=$url user=${credentials.username} isStoryManager=${credentials.isStoryManagerBackend}")
+        DebugLog.d(TAG) { "fetchCatalog url=$url user=${credentials.username} isStoryManager=${credentials.isStoryManagerBackend}" }
         val request = Request.Builder()
             .url(url)
             .header("Accept", ACCEPT_HEADER)
@@ -26,14 +27,14 @@ class OpdsCatalogRepository(
             .build()
 
         httpClient.newCall(request).execute().use { response ->
-            Log.d(TAG, "fetchCatalog response=${response.code} contentType=${response.header("Content-Type")}")
+            DebugLog.d(TAG) { "fetchCatalog response=${response.code} contentType=${response.header("Content-Type")}" }
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string().orEmpty()
                 Log.e(TAG, "fetchCatalog failed: ${response.code} body=$errorBody")
                 throw IllegalStateException("OPDS request failed: ${response.code}")
             }
             val body = response.body?.string().orEmpty()
-            Log.d(TAG, "fetchCatalog body length=${body.length} preview=${body.take(200)}")
+            DebugLog.d(TAG) { "fetchCatalog body length=${body.length} preview=${body.take(200)}" }
             parser.parse(
                 body = body,
                 requestUrl = response.request.url.toString(),

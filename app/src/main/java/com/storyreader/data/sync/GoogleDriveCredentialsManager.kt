@@ -44,8 +44,8 @@ class GoogleDriveCredentialsManager(
         private const val KEY_ACCOUNT_DISPLAY_NAME = "account_display_name"
 
         fun create(context: Context): GoogleDriveCredentialsManager {
-            val prefs = context.getSharedPreferences("google_drive_credentials", Context.MODE_PRIVATE)
-            return GoogleDriveCredentialsManager(prefs)
+            val backing = context.getSharedPreferences("google_drive_credentials", Context.MODE_PRIVATE)
+            return GoogleDriveCredentialsManager(KeystoreEncryptedPrefs(backing))
         }
     }
 }

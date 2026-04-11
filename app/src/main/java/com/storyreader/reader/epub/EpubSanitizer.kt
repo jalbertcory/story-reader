@@ -2,6 +2,7 @@ package com.storyreader.reader.epub
 
 import android.net.Uri
 import android.util.Log
+import com.storyreader.util.DebugLog
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipEntry
@@ -50,7 +51,7 @@ object EpubSanitizer {
                 val content = original.toString(Charsets.UTF_8)
                 val fixed = sanitizeXhtml(content)
                 if (fixed != null) {
-                    Log.d(TAG, "Fixing XHTML: ${entry.name}")
+                    DebugLog.d(TAG) { "Fixing XHTML: ${entry.name}" }
                     fixes[entry.name] = fixed.toByteArray(Charsets.UTF_8)
                 }
             }
@@ -58,7 +59,7 @@ object EpubSanitizer {
 
         if (fixes.isEmpty()) return
 
-        Log.d(TAG, "Rewriting EPUB with ${fixes.size} fixed XHTML files")
+        DebugLog.d(TAG) { "Rewriting EPUB with ${fixes.size} fixed XHTML files" }
         rewriteEpub(file, fixes)
     }
 

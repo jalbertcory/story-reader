@@ -2,6 +2,7 @@ package com.storyreader.ui.reader
 
 import android.app.Application
 import android.util.Log
+import com.storyreader.util.DebugLog
 import android.content.Intent
 import android.content.SharedPreferences
 import androidx.core.content.edit
@@ -282,6 +283,7 @@ class ReaderTtsController(
 
     private var ttsNavigator: AndroidTtsNavigator? = null
     private var ttsServiceBinder: TtsMediaService.LocalBinder? = null
+    private var ttsServiceConnection: android.content.ServiceConnection? = null
     private var ttsJob: Job? = null
     var ttsResumeLocator: Locator? = null
         private set
@@ -336,7 +338,7 @@ class ReaderTtsController(
     }
 
     fun startTts() {
-        Log.d(TRACE_TAG, "startTts: state=${_ttsState.value}, resume=${ttsResumeLocator.debugSummary()}")
+        DebugLog.d(TRACE_TAG) { "startTts: state=${_ttsState.value}, resume=${ttsResumeLocator.debugSummary()}" }
         if (_ttsState.value != TtsPlaybackState.STOPPED) return
 
         delegate.onTtsSessionStarting()
@@ -353,7 +355,7 @@ class ReaderTtsController(
             }
 
             val startLocator = if (ttsResumeLocator != null) {
-                Log.d(TRACE_TAG, "startTts: resuming from saved locator ${ttsResumeLocator.debugSummary()}")
+                DebugLog.d(TRACE_TAG) { "startTts: resuming from saved locator ${ttsResumeLocator.debugSummary()}" }
                 ttsResumeLocator
             } else {
                 freshStart?.locator
@@ -366,9 +368,12 @@ class ReaderTtsController(
             ttsNavigator = nav
             alignNavigatorToFreshStart(nav, freshStart)
 
-            val binder = ttsServiceBinder ?: TtsMediaService.bind(application)
-            ttsServiceBinder = binder
-            binder?.openSession(nav)
+            if (ttsServiceBinder == null) {
+                val result = TtsMediaService.bind(application)
+                ttsServiceBinder = result?.binder
+                ttsServiceConnection = result?.connection
+            }
+            ttsServiceBinder?.openSession(nav)
             delegate.navigator?.let { epubNavigator ->
                 ttsHighlightSynchronizer.startSync(nav, epubNavigator)
             }
@@ -421,7 +426,7 @@ class ReaderTtsController(
     }
 
     fun stopTts() {
-        Log.d(TRACE_TAG, "stopTts: clearing resume ${ttsResumeLocator.debugSummary()}")
+        DebugLog.d(TRACE_TAG) { "stopTts: clearing resume ${ttsResumeLocator.debugSummary()}" }
         ttsResumeLocator = null
         stopTts(restartManualSession = true)
     }
@@ -526,8 +531,12 @@ class ReaderTtsController(
 
     fun bindServiceForAutoRequests(bookId: String) {
         scope.launch {
-            val binder = ttsServiceBinder ?: TtsMediaService.bind(application) ?: return@launch
-            ttsServiceBinder = binder
+            if (ttsServiceBinder == null) {
+                val result = TtsMediaService.bind(application) ?: return@launch
+                ttsServiceBinder = result.binder
+                ttsServiceConnection = result.connection
+            }
+            val binder = ttsServiceBinder ?: return@launch
             binder.ttsPlaybackRequestListener =
                 TtsMediaService.TtsPlaybackRequestListener { requestedBookId ->
                     if (requestedBookId == bookId) {
@@ -558,6 +567,10 @@ class ReaderTtsController(
         ttsServiceBinder?.ttsPlaybackRequestListener = null
         ttsServiceBinder?.closeSession()
         ttsServiceBinder = null
+        ttsServiceConnection?.let { conn ->
+            runCatching { application.unbindService(conn) }
+        }
+        ttsServiceConnection = null
         _ttsState.value = TtsPlaybackState.STOPPED
     }
 
@@ -619,10 +632,7 @@ class ReaderTtsController(
             snippet = domStart?.snippet,
             utteranceHint = domStart?.utteranceHint
         )
-        Log.d(
-            TRACE_TAG,
-            "resolveFreshStart: kind=${resolved.kind}, page=${pageLocator.debugSummary()}, dom=${domStart.debugSummary()}, resolved=${resolved.locator.debugSummary()}"
-        )
+        DebugLog.d(TRACE_TAG) { "resolveFreshStart: kind=${resolved.kind}, page=${pageLocator.debugSummary()}, dom=${domStart.debugSummary()}, resolved=${resolved.locator.debugSummary()}" }
         return resolved
     }
 
@@ -643,10 +653,7 @@ class ReaderTtsController(
                 otherLocations = pageLocator.locations.otherLocations + ("cssSelector" to cssSelector)
             )
         )
-        Log.d(
-            TRACE_TAG,
-            "findCurrentPageStartLocator: kind=$kind, cssSelector=$cssSelector"
-        )
+        DebugLog.d(TRACE_TAG) { "findCurrentPageStartLocator: kind=$kind, cssSelector=$cssSelector" }
         return FreshTtsStart(
             locator = locator,
             kind = kind,
@@ -663,25 +670,19 @@ class ReaderTtsController(
         repeat(8) { step ->
             val currentUtterance = navigator.location.value.utterance
             val normalizedCurrent = currentUtterance.normalizedUtteranceHint()
-            Log.d(
-                TRACE_TAG,
-                "alignNavigatorToFreshStart: step=$step, kind=${freshStart.kind}"
-            )
+            DebugLog.d(TRACE_TAG) { "alignNavigatorToFreshStart: step=$step, kind=${freshStart.kind}" }
             if (normalizedCurrent.matchesUtteranceHint(targetHint)) {
                 return
             }
             if (!navigator.hasNextUtterance()) {
-                Log.d(TRACE_TAG, "alignNavigatorToFreshStart: no next utterance while seeking target")
+                DebugLog.d(TRACE_TAG) { "alignNavigatorToFreshStart: no next utterance while seeking target" }
                 return
             }
             val previousUtterance = currentUtterance
             navigator.skipToNextUtterance()
             waitForUtteranceAdvance(navigator, previousUtterance)
         }
-        Log.d(
-            TRACE_TAG,
-            "alignNavigatorToFreshStart: exhausted alignment attempts"
-        )
+        DebugLog.d(TRACE_TAG) { "alignNavigatorToFreshStart: exhausted alignment attempts" }
     }
 
     private suspend fun waitForUtteranceAdvance(

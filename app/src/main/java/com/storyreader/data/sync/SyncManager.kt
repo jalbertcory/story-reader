@@ -1,6 +1,6 @@
 package com.storyreader.data.sync
 
-import android.util.Log
+import com.storyreader.util.DebugLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.sync.Mutex
@@ -38,7 +38,7 @@ class SyncManager(
     suspend fun syncEnabledProviders(): Result<Unit> {
         val existingSync = inFlightMutex.withLock {
             inFlightSync?.takeIf { it.isActive }?.also {
-                Log.d(TAG, "Joining in-flight sync")
+                DebugLog.d(TAG) { "Joining in-flight sync" }
             }
         }
         if (existingSync != null) {

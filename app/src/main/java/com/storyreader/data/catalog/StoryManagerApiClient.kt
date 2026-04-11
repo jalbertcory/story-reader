@@ -1,6 +1,6 @@
 package com.storyreader.data.catalog
 
-import android.util.Log
+import com.storyreader.util.DebugLog
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -59,7 +59,7 @@ class StoryManagerApiClient(
             (0 until arr.length()).map { i ->
                 val obj = arr.getJSONObject(i)
                 val cover = obj.optStringOrNull("cover_url")
-                Log.d(TAG, "series=${obj.getString("name")} coverUrl=$cover")
+                DebugLog.d(TAG) { "series=${obj.getString("name")} coverUrl=$cover" }
                 val genreTagsArr = obj.optJSONArray("genre_tags")
                 val genreTags = if (genreTagsArr != null) {
                     (0 until genreTagsArr.length()).map { j -> genreTagsArr.getString(j) }
@@ -81,17 +81,17 @@ class StoryManagerApiClient(
     fun fetchSeriesBooks(name: String): Result<List<ServerBook>> = runCatching {
         val encoded = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
         val url = "${baseUrl()}/reader/series/$encoded/books"
-        Log.d(TAG, "fetchSeriesBooks url=$url")
+        DebugLog.d(TAG) { "fetchSeriesBooks url=$url" }
         val request = Request.Builder()
             .url(url)
             .applyAuth()
             .build()
 
         httpClient.newCall(request).execute().use { response ->
-            Log.d(TAG, "fetchSeriesBooks response=${response.code}")
+            DebugLog.d(TAG) { "fetchSeriesBooks response=${response.code}" }
             if (!response.isSuccessful) throw IllegalStateException("Failed to fetch series books: ${response.code}")
             val body = response.body?.string().orEmpty()
-            Log.d(TAG, "fetchSeriesBooks body length=${body.length}")
+            DebugLog.d(TAG) { "fetchSeriesBooks body length=${body.length}" }
             parseServerBooks(body)
         }
     }
@@ -127,17 +127,17 @@ class StoryManagerApiClient(
         } else {
             "${baseUrl()}/reader/updates"
         }
-        Log.d(TAG, "fetchUpdates url=$url")
+        DebugLog.d(TAG) { "fetchUpdates url=$url" }
         val request = Request.Builder()
             .url(url)
             .applyAuth()
             .build()
 
         httpClient.newCall(request).execute().use { response ->
-            Log.d(TAG, "fetchUpdates response=${response.code}")
+            DebugLog.d(TAG) { "fetchUpdates response=${response.code}" }
             if (!response.isSuccessful) throw IllegalStateException("Failed to fetch updates: ${response.code}")
             val body = response.body?.string().orEmpty()
-            Log.d(TAG, "fetchUpdates body=$body")
+            DebugLog.d(TAG) { "fetchUpdates body=$body" }
             parseServerBooks(body)
         }
     }
