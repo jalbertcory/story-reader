@@ -5,6 +5,7 @@ import com.storyreader.util.DebugLog
 import java.io.File
 import java.net.URLEncoder
 import okhttp3.Credentials
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -29,8 +30,7 @@ class OpdsCatalogRepository(
         httpClient.newCall(request).execute().use { response ->
             DebugLog.d(TAG) { "fetchCatalog response=${response.code} contentType=${response.header("Content-Type")}" }
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string().orEmpty()
-                Log.e(TAG, "fetchCatalog failed: ${response.code} body=$errorBody")
+                Log.e(TAG, "fetchCatalog failed: ${response.code}")
                 throw IllegalStateException("OPDS request failed: ${response.code}")
             }
             val body = response.body?.string().orEmpty()
@@ -76,6 +76,21 @@ class OpdsCatalogRepository(
 
     private fun Request.Builder.applyAuth(credentials: OpdsCredentials): Request.Builder {
         if (credentials.username.isBlank()) return this
+        val requestUrl = build().url
+        val configuredBaseUrl = credentials.baseUrl
+            .let { url ->
+                if (url.startsWith("http://")) {
+                    "https://${url.removePrefix("http://")}"
+                } else {
+                    url
+                }
+            }
+            .toHttpUrlOrNull()
+            ?: return this
+        val isSameOrigin = configuredBaseUrl.scheme == requestUrl.scheme &&
+            configuredBaseUrl.host.equals(requestUrl.host, ignoreCase = true) &&
+            configuredBaseUrl.port == requestUrl.port
+        if (!isSameOrigin) return this
         return header("Authorization", Credentials.basic(credentials.username, credentials.password))
     }
 

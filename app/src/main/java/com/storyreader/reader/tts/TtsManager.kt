@@ -1,8 +1,8 @@
 package com.storyreader.reader.tts
 
 import android.app.Application
-import android.util.Log
 import androidx.media3.common.MediaMetadata
+import com.storyreader.util.DebugLog
 import org.readium.navigator.media.common.MediaMetadataFactory
 import org.readium.navigator.media.common.MediaMetadataProvider
 import org.readium.navigator.media.tts.TtsNavigator
@@ -30,7 +30,9 @@ class TtsManager(private val application: Application) {
     ): Boolean {
         return try {
             val useCustomProvider = !enginePackageName.isNullOrBlank() || textFilter.hasAnyFilterEnabled()
-            Log.d(TAG, "initialize: enginePkg=$enginePackageName, filterActive=${textFilter.hasAnyFilterEnabled()}, useCustomProvider=$useCustomProvider, filter=$textFilter")
+            DebugLog.d(TAG) {
+                "initialize: engineSelected=${!enginePackageName.isNullOrBlank()} filterActive=${textFilter.hasAnyFilterEnabled()} useCustomProvider=$useCustomProvider"
+            }
             val engineProvider =
                 if (!useCustomProvider) {
                     AndroidTtsEngineProvider(application)

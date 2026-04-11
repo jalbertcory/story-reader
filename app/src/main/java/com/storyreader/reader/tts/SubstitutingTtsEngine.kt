@@ -1,6 +1,6 @@
 package com.storyreader.reader.tts
 
-import android.util.Log
+import com.storyreader.util.DebugLog
 import kotlinx.coroutines.flow.StateFlow
 import org.readium.navigator.media.tts.TtsEngine
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
@@ -38,10 +38,8 @@ class SubstitutingTtsEngine(
             pattern.replace(acc, replacement)
         }.trim()
         val spoken = transformed.ifBlank { text }
-        if (spoken != text) {
-            Log.d(TAG, "speak: substituted \"${text.take(120)}\" -> \"${spoken.take(120)}\"")
-        } else {
-            Log.d(TAG, "speak: no change \"${text.take(120)}\"")
+        DebugLog.d(TAG) {
+            "speak: substitutionApplied=${spoken != text} originalLength=${text.length} spokenLength=${spoken.length}"
         }
         delegate.speak(requestId, spoken, language)
     }

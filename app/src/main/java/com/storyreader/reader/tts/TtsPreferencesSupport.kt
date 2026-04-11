@@ -7,6 +7,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.UnstableApi
+import com.storyreader.util.DebugLog
 import java.lang.reflect.Constructor
 import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
@@ -191,12 +192,12 @@ class StoryReaderAndroidTtsEngineProvider(
         } ?: return Try.failure(DebugError("Failed to create Android Tts engine."))
 
         val replacements = textFilter.buildReplacements()
-        Log.d(TAG, "createEngine: filter=$textFilter, replacementCount=${replacements.size}")
+        DebugLog.d(TAG) { "createEngine: replacementCount=${replacements.size}" }
         if (replacements.isNotEmpty()) {
-            Log.d(TAG, "createEngine: wrapping engine with ${replacements.size} replacement(s)")
+            DebugLog.d(TAG) { "createEngine: wrapping engine with ${replacements.size} replacement(s)" }
             return Try.success(SubstitutingTtsEngine(engine, replacements))
         }
-        Log.d(TAG, "createEngine: no filters active, using raw engine")
+        DebugLog.d(TAG) { "createEngine: no filters active, using raw engine" }
         return Try.success(engine)
     }
 
