@@ -29,7 +29,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -57,6 +56,7 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.storyreader.data.catalog.ServerBook
+import com.storyreader.ui.components.StoryReaderLinearProgressIndicator
 import okhttp3.OkHttpClient
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -306,8 +306,8 @@ private fun SeriesCard(
             if (isImporting) {
                 val progress = uiState.importProgress
                 if (progress != null && progress.second > 0) {
-                    LinearProgressIndicator(
-                        progress = { progress.first.toFloat() / progress.second },
+                    StoryReaderLinearProgressIndicator(
+                        progress = progress.first.toFloat() / progress.second,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
@@ -318,7 +318,7 @@ private fun SeriesCard(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 } else {
-                    LinearProgressIndicator(
+                    StoryReaderLinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
