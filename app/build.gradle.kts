@@ -150,7 +150,9 @@ dependencies {
     implementation(libs.readium.navigator.media.tts)
 
     // WebDAV
-    implementation(libs.dav4jvm)
+    implementation(libs.dav4jvm) {
+        exclude(group = "org.ogce", module = "xpp3")
+    }
     implementation(libs.okhttp)
     implementation(libs.play.services.auth)
 
