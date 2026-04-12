@@ -37,7 +37,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.storyreader"
+        applicationId = "io.github.jalbertcory.storyreader"
         minSdk = 28
         targetSdk = 36
         versionCode = ciVersionCode.map(String::toInt).orElse(1).get()
