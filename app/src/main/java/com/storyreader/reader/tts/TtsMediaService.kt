@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
+import com.storyreader.BuildConfig
 import com.storyreader.StoryReaderApplication
 import com.storyreader.data.db.entity.BookEntity
 import com.storyreader.ui.reader.ChapterMatch
@@ -642,7 +643,7 @@ class TtsMediaService : MediaLibraryService() {
             bitmap.recycle()
             return out.toByteArray()
         }
-        const val ACTION_BIND = "com.storyreader.reader.tts.TtsMediaService"
+        val ACTION_BIND = "${BuildConfig.APPLICATION_ID}.reader.tts.TtsMediaService"
 
         data class BindResult(val binder: LocalBinder, val connection: ServiceConnection)
 
