@@ -166,6 +166,7 @@ dependencies {
 
     // Image loading
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Unit tests
     testImplementation(libs.junit)

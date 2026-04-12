@@ -52,9 +52,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.storyreader.data.catalog.ServerBook
 import com.storyreader.ui.components.StoryReaderLinearProgressIndicator
 import okhttp3.OkHttpClient
@@ -81,7 +83,9 @@ fun SeriesBrowserScreen(
             }
         }
         ImageLoader.Builder(context)
-            .okHttpClient(clientBuilder.build())
+            .components {
+                add(OkHttpNetworkFetcherFactory(callFactory = { clientBuilder.build() }))
+            }
             .build()
     }
 
