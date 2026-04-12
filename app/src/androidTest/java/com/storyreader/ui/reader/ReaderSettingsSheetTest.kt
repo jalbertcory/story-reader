@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.storyreader.ui.theme.StoryReaderTheme
@@ -90,7 +91,9 @@ class ReaderSettingsSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.ALIGN_JUSTIFY).performClick()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.ALIGN_JUSTIFY)
+            .performScrollTo()
+            .performClick()
 
         composeRule.runOnIdle {
             assertEquals(ReadiumTextAlign.JUSTIFY, latestPreferences.textAlign)
@@ -118,9 +121,15 @@ class ReaderSettingsSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH).assertIsOff()
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH).performClick()
-        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH).assertIsOn()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH)
+            .performScrollTo()
+            .assertIsOff()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH)
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag(ReaderSettingsTestTags.SCROLL_MODE_SWITCH)
+            .performScrollTo()
+            .assertIsOn()
 
         composeRule.runOnIdle {
             assertEquals(true, latestPreferences.scroll)
